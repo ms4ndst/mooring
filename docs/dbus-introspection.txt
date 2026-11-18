@@ -1,0 +1,141 @@
+KDE Connect D-Bus API: Phase 0 findings
+=======================================
+kdeconnectd 26.08.3-1.fc44 · Fedora 44 · Niri · 2026-11-18
+No device IDs, device names or message data in this file. Keep it that way.
+
+Bus names (session bus)
+  org.kde.kdeconnect          (main)
+  org.kde.kdeconnect.daemon   (alias, same process)
+
+Object tree (busctl --user tree org.kde.kdeconnect)
+  /MainApplication
+  /org/kde/kdeconnect/daemon       -> org.kde.KDBusService only (Activate/Open/CommandLine)
+  /modules/kdeconnect              -> the real daemon API; not listed by `tree`,
+                                      child device nodes are not advertised either
+
+GOTCHA: `busctl introspect org.kde.kdeconnect /modules/kdeconnect` fails with
+  "Invalid introspection data: duplicate method 'sendSimpleNotification'".
+  Qt exports C++ overloads as duplicate D-Bus methods. Read the raw XML instead:
+  busctl --user call org.kde.kdeconnect /modules/kdeconnect \
+      org.freedesktop.DBus.Introspectable Introspect
+
+org.kde.kdeconnect.daemon @ /modules/kdeconnect   (LIVE, verified)
+  property pairingRequests          as
+  property customDevices            as
+  signal   deviceAdded(s id)
+  signal   deviceRemoved(s id)
+  signal   deviceVisibilityChanged(s id, b isVisible)
+  signal   deviceListChanged()
+  signal   announcedNameChanged(s)
+  signal   pairingRequestsChanged()
+  signal   linkProvidersChanged(as)
+  signal   customDevicesChanged(as)
+  method   devices(b onlyReachable, b onlyPaired) -> as   (+ overloads (b) and ())
+  method   deviceNames(b, b) -> a{ss}                     (+ overloads)
+  method   deviceIdByName(s) -> s
+  method   announcedName() -> s / setAnnouncedName(s)
+  method   linkProviders() -> as        currently: LAN enabled, Bluetooth (beta) disabled
+  method   setLinkProviderState(s, b)
+  method   forceOnNetworkChange()
+  method   sendSimpleNotification(s eventId, s title, s text, s iconName)
+  method   selfId() -> s
+
+Interfaces present in installed binaries (Q_CLASSINFO strings; NOT yet seen live, no device)
+  org.kde.kdeconnect.device                        libkdeconnectcore.so.26
+    isPaired, isReachable, isVisible, pairState, isPairRequested(ByPeer),
+    requestPairing, acceptPairing, unpair, hasPlugin, loadedPlugins, supportedPlugins,
+    reloadPlugins, statusIconName, verificationKey, encryptionInfo
+    signals: reachableChanged, pairStateChanged, pairingFailed, statusIconNameChanged
+    !! no isTrusted: plan's §5 guess was wrong, it is isPaired in 26.08
+  org.kde.kdeconnect.device.conversations          kdeconnect_sms.so
+    activeConversations, requestConversation, replyToConversation, sendWithoutConversation
+    signals: conversationCreated, conversationUpdated, conversationLoaded,
+             conversationRemoved, conversationMessageRead
+  org.kde.kdeconnect.device.sms                    kdeconnect_sms.so
+    requestAllConversations, requestAllConversationThreads, requestConversation,
+    sendSms, getAttachment, requestAttachment, requestAttachmentFile, launchApp
+  org.kde.kdeconnect.device.notifications          kdeconnect_notifications.so
+    activeNotifications; signals notificationPosted, notificationRemoved,
+    notificationUpdated, allNotificationsRemoved
+  org.kde.kdeconnect.device.notifications.notification
+    appName, title, text, ticker, dismissable, silent, replyId, iconPath, hasIcon,
+    actions, internalId; dismiss, reply, sendReply, sendAction
+  org.kde.kdeconnect.device.sftp                   kdeconnect_sftp.so
+    mountAndWait, mount, unmount, isMounted, mountPoint, getDirectories,
+    getMountError, startBrowsing; signals mounted, unmounted
+  org.kde.kdeconnect.device.share                  shareUrl, shareUrls, shareText, openFile
+  org.kde.kdeconnect.device.clipboard              sendClipboard, isAutoShareDisabled
+  org.kde.kdeconnect.device.battery                charge, isCharging; signal refreshed
+  org.kde.kdeconnect.device.findmyphone            ring
+  Also available: contacts, telephony, ping, mprisremote, remotecommands,
+  remotecontrol, remotekeyboard, remotesystemvolume, presenter, lockdevice,
+  findthisdevice, virtualmonitor
+
+Python binding finding (affects the architecture)
+  PyQt6 6.11's QDBusArgument has no read API (only add/begin*/end*), so the
+  ConversationMessage structs inside activeConversations()/conversation* signals
+  cannot be decoded through QtDBus. spikes/list_sms.py uses jeepney instead.
+
+Live with a paired phone (2026-11-18)
+  device properties: activeProviderNames, iconName, isPairRequested, isPairRequestedByPeer,
+    isPaired, isReachable, name, pairState, reachableAddresses, statusIconName,
+    supportedPlugins, type, verificationKey
+    paired+reachable phone reports isPaired=True, pairState=3, type='phone'
+  device child nodes: battery clipboard connectivity_report contacts findmyphone
+    findthisdevice mprisremote notifications ping remotecontrol remotekeyboard sftp
+    share shareinputdevicesremote sms telephony
+  interfaces ON the device path: org.kde.kdeconnect.device, ...device.conversations
+  battery properties charge (int) / isCharging (bool) read fine
+  sms.requestAllConversationThreads / requestAllConversations return OK, but the phone
+    sent no conversation data (0 signals in 30 s, activeConversations empty).
+    Suspect: SMS permission not granted to the Android app.
+
+  (The no-data result above was phone-side: the app had to be reopened after granting
+   SMS permission. Once kdeconnect-sms showed threads, the spike worked.)
+
+SMS interfaces, LIVE introspection
+  org.kde.kdeconnect.device.conversations  @ /modules/kdeconnect/devices/<id>
+    method activeConversations() -> av              latest message per thread
+    method requestAllConversationThreads()          <- HERE, not on /sms
+    method requestConversation(x threadId, i start, i end)
+    method replyToConversation(x threadId, s message, av attachmentUrls)
+    method sendWithoutConversation(av addressList, s message, av attachmentUrls)
+    method requestAttachmentFile(x partID, s uniqueIdentifier)
+    signal conversationCreated(v msg)
+    signal conversationUpdated(v msg)
+    signal conversationRemoved(x threadId)
+    signal conversationLoaded(x threadId, t messageCount)
+    signal attachmentReceived(s filePath, s fileName)
+  org.kde.kdeconnect.device.sms  @ .../<id>/sms
+    method requestAllConversations()
+    method requestConversation(x id[, x rangeStartTimestamp[, x numberToRequest]])
+    method sendSms(av addresses, s text, av attachmentUrls[, x subID])
+    method requestAttachment(x partID, s uniqueIdentifier) / getAttachment(...)
+    method launchApp()
+
+ConversationMessage struct: (isa(s)xiixixa(xsss)), wrapped in a variant
+  [0] i  eventField     bit flags (1 = text message; multi-target etc. are other bits)
+  [1] s  body
+  [2] a(s) addresses    each a 1-tuple (address,)
+  [3] x  date           milliseconds since epoch
+  [4] i  type           Android Telephony type: 1 = inbox (incoming), 2 = sent
+  [5] i  read           0/1
+  [6] x  threadID
+  [7] i  uID            message id (unique per message)
+  [8] x  subID          SIM subscription id
+  [9] a(xsss) attachments  (partID, mimeType, base64 thumbnail, uniqueIdentifier)
+
+Loading a thread: requestConversation(threadId, 0, 20) is answered by N separate
+  conversationUpdated(v) signals (one per message), then
+  conversationLoaded(threadId, N) as the end marker. The backend must buffer
+  conversationUpdated per thread and flush on conversationLoaded.
+
+GOTCHA (jeepney): DBusConnection.send_and_get_reply() returns D-Bus *errors* as normal
+  replies. Always wrap with jeepney.wrappers.unwrap_msg() or failures pass silently.
+
+Phase 0 checklist
+  [x] device properties live (isPaired vs pairState semantics)
+  [x] conversations interface path: device path
+  [x] ConversationMessage struct signature and thread id field ([6])
+  [x] requestConversation(x,i,i) and conversationLoaded(x threadId, t count)
+  [ ] battery `refreshed` signal signature (not observed; phone sat at 100%)

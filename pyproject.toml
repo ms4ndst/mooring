@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mooring"
+version = "0.1.0"
+description = "A Phone Link-style hub for Linux, built on KDE Connect and scrcpy"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "GPL-3.0-or-later" }
+dependencies = [
+    "PyQt6>=6.6",
+    "pillow>=10",
+    "jeepney>=0.8",  # D-Bus: PyQt6's QtDBus can't demarshal KDE Connect's structs
+]
+
+[project.optional-dependencies]
+# PyQt6 6.12 ships broken .pyi stubs (pyqtSignal, QObject.__init__); dev envs use 6.11.
+dev = ["PyQt6>=6.6,<6.12", "pytest>=8", "pytest-qt>=4.4", "ruff>=0.6", "mypy>=1.10"]
+
+[project.scripts]
+mooring = "mooring.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mooring"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+qt_api = "pyqt6"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]  # ruff format owns line length
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+packages = ["mooring"]
+warn_unused_ignores = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["jeepney", "jeepney.*"]
+ignore_missing_imports = true  # jeepney ships no type information

@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Mooring",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "mooring",
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}/src", "QT_QPA_PLATFORM": "wayland" }
+    },
+    {
+      "name": "Mooring (fake backend)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "mooring",
+      "args": ["--fake"],
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}/src" }
+    }
+  ]
+}

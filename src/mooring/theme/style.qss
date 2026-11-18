@@ -1,0 +1,135 @@
+/* Placeholders like $base are filled from the active Catppuccin flavour. */
+
+QWidget {
+    color: $text;
+    font-size: 10.5pt;
+}
+
+QMainWindow, QDialog {
+    background: $base;
+}
+
+#sidebar {
+    background: $mantle;
+    border-right: 1px solid $crust;
+}
+
+#nav {
+    background: transparent;
+    border: none;
+    outline: 0;
+}
+#nav::item {
+    padding: 9px 12px;
+    margin: 1px 10px;
+    border-radius: 8px;
+    color: $subtext1;
+}
+#nav::item:hover {
+    background: $surface0;
+}
+#nav::item:selected {
+    background: $surface1;
+    color: $text;
+}
+
+#deviceName, #pageTitle {
+    font-weight: 600;
+}
+#deviceName { font-size: 13pt; }
+#pageTitle { font-size: 16pt; }
+#threadTitle { font-size: 12pt; font-weight: 600; }
+#muted { color: $subtext0; }
+#hint { color: $overlay1; font-size: 11pt; }
+
+QPushButton {
+    background: $surface0;
+    border: 1px solid $surface1;
+    border-radius: 8px;
+    padding: 6px 14px;
+}
+QPushButton:hover { background: $surface1; }
+QPushButton:pressed { background: $surface2; }
+QPushButton:disabled { color: $overlay0; background: $mantle; border-color: $surface0; }
+QPushButton#primary {
+    background: $accent;
+    border: none;
+    color: $crust;
+    font-weight: 600;
+}
+QPushButton#primary:hover { background: $lavender; }
+QPushButton#primary:disabled { background: $surface1; color: $overlay0; }
+
+QLineEdit, QPlainTextEdit, QComboBox {
+    background: $surface0;
+    border: 1px solid $surface1;
+    border-radius: 8px;
+    padding: 6px 10px;
+    selection-background-color: $accent;
+    selection-color: $crust;
+}
+QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus { border-color: $accent; }
+QLineEdit:disabled { color: $overlay0; }
+QComboBox QAbstractItemView {
+    background: $surface0;
+    border: 1px solid $surface1;
+    selection-background-color: $surface1;
+    selection-color: $text;
+    outline: 0;
+}
+
+QListView {
+    background: transparent;
+    border: none;
+    outline: 0;
+}
+
+QSplitter::handle { background: $surface0; }
+QSplitter::handle:horizontal { width: 1px; }
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 2px;
+}
+QScrollBar::handle:vertical {
+    background: $surface1;
+    border-radius: 3px;
+    min-height: 30px;
+}
+QScrollBar::handle:vertical:hover { background: $surface2; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
+QScrollBar:horizontal {
+    background: transparent;
+    height: 10px;
+    margin: 2px;
+}
+QScrollBar::handle:horizontal {
+    background: $surface1;
+    border-radius: 3px;
+    min-width: 30px;
+}
+QScrollBar::handle:horizontal:hover { background: $surface2; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: none; }
+
+QMenu {
+    background: $mantle;
+    border: 1px solid $surface0;
+    padding: 4px;
+}
+QMenu::item { padding: 6px 18px; border-radius: 6px; }
+QMenu::item:selected { background: $surface0; }
+
+QStatusBar {
+    background: $base;
+    color: $peach;
+}
+QStatusBar::item { border: none; }
+
+QToolTip {
+    background: $surface0;
+    color: $text;
+    border: 1px solid $surface1;
+}
