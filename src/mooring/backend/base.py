@@ -30,6 +30,20 @@ class Device:
 
 
 @dataclass(frozen=True, slots=True)
+class Attachment:
+    """An MMS part. ``thumbnail`` is a small preview; the full file is fetched on demand."""
+
+    part_id: int
+    mime_type: str
+    unique_id: str
+    thumbnail: bytes = b""
+
+    @property
+    def is_image(self) -> bool:
+        return self.mime_type.startswith("image/")
+
+
+@dataclass(frozen=True, slots=True)
 class Message:
     id: int
     thread_id: int
@@ -38,6 +52,7 @@ class Message:
     timestamp: datetime
     outgoing: bool
     read: bool = True
+    attachments: tuple[Attachment, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +97,8 @@ class PhoneBackend(QObject):
     notificationPosted = pyqtSignal(str, object)
     #: Args: device id, notification id.
     notificationRemoved = pyqtSignal(str, str)
+    #: A requested attachment was downloaded. Args: device id, local file path.
+    attachmentReady = pyqtSignal(str, str)
     #: Something failed that the user should hear about. Arg: short message.
     error = pyqtSignal(str)
 
@@ -144,4 +161,10 @@ class PhoneBackend(QObject):
         raise NotImplementedError
 
     def share_url(self, device_id: str, url: str) -> None:
+        raise NotImplementedError
+
+    # --- attachments ---------------------------------------------------------
+
+    def request_attachment(self, device_id: str, attachment: Attachment) -> None:
+        """Download the full file; answered by ``attachmentReady``."""
         raise NotImplementedError

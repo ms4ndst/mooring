@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 
 from PyQt6.QtCore import QModelIndex, QPersistentModelIndex, QRect, QRectF, QSize, Qt
-from PyQt6.QtGui import QFont, QFontMetrics, QPainter
+from PyQt6.QtGui import QFont, QFontMetrics, QImage, QPainter
 from PyQt6.QtWidgets import QListView, QStyle, QStyledItemDelegate, QStyleOptionViewItem
 
+from mooring.backend.base import Message
 from mooring.models.roles import Role
 from mooring.theme.catppuccin import AVATAR_COLORS, Theme
 from mooring.ui.format import initials, short_time
@@ -119,30 +120,68 @@ class ConversationDelegate(QStyledItemDelegate):
 
 
 class BubbleDelegate(QStyledItemDelegate):
+    """Chat bubble: optional MMS thumbnail on top, wrapped text below, time underneath."""
+
     PAD_H, PAD_V, MARGIN, GAP = 12, 8, 14, 3
     MAX_FRACTION = 0.7
+    IMAGE_MAX = 240
 
     def __init__(self, theme: Theme, view: QListView) -> None:
         super().__init__(view)
         self._theme = theme
         self._view = view
+        self._images: dict[tuple[int, int], QImage | None] = {}
 
-    def _text_rect(self, option: QStyleOptionViewItem, text: str) -> tuple[QRect, int]:
+    def _image(self, msg: Message | None) -> QImage | None:
+        if msg is None:
+            return None
+        att = next((a for a in msg.attachments if a.is_image and a.thumbnail), None)
+        if att is None:
+            return None
+        key = (msg.id, att.part_id)
+        if key not in self._images:
+            img = QImage.fromData(att.thumbnail)
+            if img.isNull():
+                self._images[key] = None
+            else:
+                self._images[key] = img.scaled(
+                    self.IMAGE_MAX,
+                    self.IMAGE_MAX,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+        return self._images[key]
+
+    def _layout(self, option: QStyleOptionViewItem, index: _Index) -> tuple[QRect, QSize, int]:
+        """(text rect, image size, viewport width). Empty text -> empty rect."""
         viewport = self._view.viewport()
         width = viewport.width() if viewport else 400
         max_text = max(80, int(width * self.MAX_FRACTION) - 2 * self.PAD_H)
-        rect = QFontMetrics(option.font).boundingRect(
-            QRect(0, 0, max_text, 100_000), Qt.TextFlag.TextWordWrap, text
+        text = index.data(Qt.ItemDataRole.DisplayRole) or ""
+        text_rect = (
+            QFontMetrics(option.font).boundingRect(
+                QRect(0, 0, max_text, 100_000), Qt.TextFlag.TextWordWrap, text
+            )
+            if text
+            else QRect()
         )
-        return rect, width
+        img = self._image(index.data(Role.Item))
+        img_size = img.size() if img is not None else QSize(0, 0)
+        return text_rect, img_size, width
 
     def _time_height(self, option: QStyleOptionViewItem) -> int:
         return QFontMetrics(_scaled(option.font, 0.8)).height()
 
+    def _bubble_size(self, text_rect: QRect, img: QSize) -> QSize:
+        inner_w = max(text_rect.width(), img.width())
+        gap = self.GAP * 2 if img.height() and text_rect.height() else 0
+        inner_h = img.height() + gap + text_rect.height()
+        return QSize(inner_w + 2 * self.PAD_H, inner_h + 2 * self.PAD_V)
+
     def sizeHint(self, option: QStyleOptionViewItem, index: _Index) -> QSize:
-        rect, width = self._text_rect(option, index.data(Qt.ItemDataRole.DisplayRole) or "")
-        height = rect.height() + 2 * self.PAD_V + self._time_height(option) + 3 * self.GAP
-        return QSize(width - 4, height)
+        text_rect, img, width = self._layout(option, index)
+        bubble = self._bubble_size(text_rect, img)
+        return QSize(width - 4, bubble.height() + self._time_height(option) + 3 * self.GAP)
 
     def paint(self, painter: QPainter | None, option: QStyleOptionViewItem, index: _Index) -> None:
         if painter is None:
@@ -151,32 +190,36 @@ class BubbleDelegate(QStyledItemDelegate):
         text: str = index.data(Qt.ItemDataRole.DisplayRole) or ""
         outgoing = bool(index.data(Role.Outgoing))
         ts: datetime | None = index.data(Role.Timestamp)
-        text_rect, _ = self._text_rect(option, text)
+        text_rect, img_size, _ = self._layout(option, index)
+        size = self._bubble_size(text_rect, img_size)
 
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         r = option.rect
-        bubble_w = text_rect.width() + 2 * self.PAD_H
-        bubble_h = text_rect.height() + 2 * self.PAD_V
-        x = r.right() - self.MARGIN - bubble_w if outgoing else r.left() + self.MARGIN
+        x = r.right() - self.MARGIN - size.width() if outgoing else r.left() + self.MARGIN
         y = r.top() + self.GAP
-        bubble = QRectF(x, y, bubble_w, bubble_h)
+        bubble = QRectF(x, y, size.width(), size.height())
 
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(t.color("accent") if outgoing else t.color("surface0"))
         painter.drawRoundedRect(bubble, 14, 14)
 
-        painter.setFont(option.font)
-        painter.setPen(t.color("crust") if outgoing else t.color("text"))
-        painter.drawText(
-            QRect(x + self.PAD_H, y + self.PAD_V, text_rect.width() + 1, text_rect.height()),
-            Qt.TextFlag.TextWordWrap,
-            text,
-        )
+        cy = y + self.PAD_V
+        img = self._image(index.data(Role.Item))
+        if img is not None:
+            painter.drawImage(QRect(x + self.PAD_H, cy, img.width(), img.height()), img)
+            cy += img.height() + (self.GAP * 2 if text else 0)
+        if text:
+            painter.setFont(option.font)
+            painter.setPen(t.color("crust") if outgoing else t.color("text"))
+            painter.drawText(
+                QRect(x + self.PAD_H, cy, text_rect.width() + 1, text_rect.height()),
+                Qt.TextFlag.TextWordWrap,
+                text,
+            )
 
         if ts:
-            time_font = _scaled(option.font, 0.8)
-            painter.setFont(time_font)
+            painter.setFont(_scaled(option.font, 0.8))
             painter.setPen(t.color("overlay1"))
             align = Qt.AlignmentFlag.AlignRight if outgoing else Qt.AlignmentFlag.AlignLeft
             painter.drawText(

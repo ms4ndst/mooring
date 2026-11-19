@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from mooring import __version__
 from mooring.backend.base import PhoneBackend
+from mooring.services.notifier import Notifier
 from mooring.services.settings import SettingsStore
 from mooring.theme.catppuccin import FLAVORS, Theme
 from mooring.ui.main_window import MainWindow
@@ -172,6 +173,15 @@ def main(argv: list[str] | None = None) -> int:
         app.setQuitOnLastWindowClosed(False)
     else:
         log.info("no system tray (StatusNotifierItem host) found; closing the window quits")
+
+    notifier = Notifier(
+        backend,
+        settings,
+        open_thread=window.open_thread,
+        is_viewing=window.is_viewing,
+        parent=window,
+    )
+    notifier.start()
 
     backend.start()
     window.show()

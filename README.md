@@ -9,10 +9,15 @@ and mirroring by `scrcpy`. See [PLAN.md](PLAN.md) for the architecture and phase
 
 ## Status
 
-Phase 1 (skeleton): the window, sidebar, Catppuccin theming, tray icon, single-instance
-guard, Messages/Notifications/Settings pages, all running against an in-memory
-`FakeBackend`. The real KDE Connect backend comes in Phase 2; until then, the app falls
-back to the fake backend even without `--fake`.
+- Phase 1 skeleton, Phase 2 device & connection: done.
+- Phase 3 messages: conversation list with contact names (from KDE Connect's contact
+  sync), threads with lazy loading, reply, new message to a number, MMS pictures
+  (thumbnails, click to open), desktop notifications with Open/Reply (inline reply on
+  daemons that support it, e.g. Plasma or swaync; dunst opens the thread instead).
+- Phone notifications page, photos, files and mirroring: later phases.
+
+Phone-side requirements: SMS and Contacts permissions for the KDE Connect app, and
+its battery usage set to "Unrestricted", or Android delays SMS sync in the background.
 
 ## Setup (Fedora)
 

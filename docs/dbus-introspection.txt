@@ -125,10 +125,29 @@ ConversationMessage struct: (isa(s)xiixixa(xsss)), wrapped in a variant
   [8] x  subID          SIM subscription id
   [9] a(xsss) attachments  (partID, mimeType, base64 thumbnail, uniqueIdentifier)
 
-Loading a thread: requestConversation(threadId, 0, 20) is answered by N separate
-  conversationUpdated(v) signals (one per message), then
-  conversationLoaded(threadId, N) as the end marker. The backend must buffer
-  conversationUpdated per thread and flush on conversationLoaded.
+Loading a thread: requestConversation(threadId, start, end) is answered by separate
+  conversationUpdated(v) signals, one per message, NEWEST FIRST, indices counted from
+  the newest (0). Per KDE's RequestConversationWorker:
+  - Served from the daemon's cache: NO end marker on D-Bus (the worker's finished()
+    is internal). conversationLoaded(threadId, total) is only emitted by addMessages,
+    i.e. when the daemon had to fetch from the phone; `total` = messages now cached.
+  - The worker doesn't bounds-check start > cache size. Never request past `total`.
+  Mooring's SmsChannel flushes a page when it has end-start messages, or after 400 ms
+  of silence (20 s while waiting for the first message).
+  conversationUpdated/Created also announce brand-new messages (newest in thread).
+
+Dead Bluetooth link (seen 2026-11-19): with "Bluetooth (beta)" and LAN both listed,
+  the phone answered pings but never SMS or contacts sync; the Bluetooth link stayed
+  listed even after the phone's Bluetooth was off, and the journal showed
+  "QIODevice::write (MultiplexChannel): ReadOnly device". Restarting kdeconnectd with
+  the bluetooth provider off -> LAN only -> conversations and 183 contacts synced
+  within a second. Toggling the provider off does NOT close an existing link.
+
+Daemon cache lifetime: the device's plugins (and the SMS cache) are torn down when the
+  phone becomes unreachable; after reconnecting, activeConversations() is empty until
+  the phone answers requestAllConversationThreads(). The Android app only answered
+  that while in the foreground here, which suggests background restrictions:
+  set KDE Connect's battery usage to "Unrestricted" on the phone.
 
 GOTCHA (jeepney): DBusConnection.send_and_get_reply() returns D-Bus *errors* as normal
   replies. Always wrap with jeepney.wrappers.unwrap_msg() or failures pass silently.

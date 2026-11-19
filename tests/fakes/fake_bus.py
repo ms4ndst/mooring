@@ -23,10 +23,15 @@ class FakeBus:
         self.methods: dict[tuple[str, str, str], Callable[..., tuple[Any, ...]]] = {}
         #: (path, interface) -> {property: value}
         self.props: dict[tuple[str, str], dict[str, Any]] = {}
-        self.calls: list[tuple[str, str, str, tuple[Any, ...]]] = []
+        #: (path, interface, method, body, signature)
+        self.calls: list[tuple[str, str, str, tuple[Any, ...], str]] = []
         self.subs: list[tuple[MatchRule, SignalHandler]] = []
         self.daemon_running = True
-        self.daemon_owner = ":1.42"  # default sender of emit()
+        #: well-known name -> unique name (what GetNameOwner answers)
+        self.owners: dict[str, str] = {
+            "org.kde.kdeconnect": ":1.42",  # default sender of emit()
+            "org.freedesktop.Notifications": ":1.50",
+        }
 
     # --- BusClient protocol --------------------------------------------------
 
@@ -40,11 +45,14 @@ class FakeBus:
         on_error: ErrorCallback | None = None,
     ) -> None:
         key = (addr.object_path, addr.interface or "", method)
-        self.calls.append((*key, body))
+        self.calls.append((*key, body, signature))
         if method == "GetNameOwner":
-            if self.daemon_running and on_reply:
-                on_reply((self.daemon_owner,))
-            elif on_error:
+            owner = self.owners.get(body[0])
+            if body[0] == "org.kde.kdeconnect" and not self.daemon_running:
+                owner = None
+            if owner and on_reply:
+                on_reply((owner,))
+            elif not owner and on_error:
                 on_error("org.freedesktop.DBus.Error.NameHasNoOwner", "")
             return
         fn = self.methods.get(key)
@@ -86,5 +94,5 @@ class FakeBus:
             if rule.matches(msg):
                 handler(msg)
 
-    def called(self, method: str) -> list[tuple[str, str, str, tuple[Any, ...]]]:
+    def called(self, method: str) -> list[tuple[str, str, str, tuple[Any, ...], str]]:
         return [c for c in self.calls if c[2] == method]

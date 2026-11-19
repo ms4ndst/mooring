@@ -27,6 +27,14 @@ class SettingsStore(QObject):
         self.flavorChanged.emit(flavor)
 
     @property
+    def notify_show_text(self) -> bool:
+        """Show message text in desktop notifications (off = just 'New message')."""
+        return str(self._s.value("notifications/show_text", "true")).lower() == "true"
+
+    def set_notify_show_text(self, show: bool) -> None:
+        self._s.setValue("notifications/show_text", "true" if show else "false")
+
+    @property
     def active_device(self) -> str:
         """Empty string when no device has been chosen."""
         return str(self._s.value("device/active", ""))

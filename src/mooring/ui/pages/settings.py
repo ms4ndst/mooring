@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFormLayout,
     QHBoxLayout,
@@ -39,6 +40,9 @@ class SettingsPage(QWidget):
         self.pair_hint = QLabel()
         self.pair_hint.setObjectName("muted")
         self.pair_hint.setWordWrap(True)
+        self.show_text = QCheckBox("Show message text in notifications")
+        self.show_text.setChecked(settings.notify_show_text)
+        self.show_text.toggled.connect(settings.set_notify_show_text)
         self.flavor_combo = QComboBox()
         for key, label in FLAVOR_LABELS.items():
             self.flavor_combo.addItem(label, key)
@@ -52,6 +56,7 @@ class SettingsPage(QWidget):
         form.setSpacing(12)
         form.addRow(QLabel("Active device"), self.device_combo)
         form.addRow(QLabel("Pairing"), pair_row)
+        form.addRow(QLabel("Notifications"), self.show_text)
         form.addRow(QLabel("Theme"), self.flavor_combo)
 
         layout = QVBoxLayout(self)

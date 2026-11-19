@@ -34,6 +34,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Mooring")
         self.resize(1100, 720)
         self.hide_on_close = False  # set by the app when a tray icon exists
+        self._settings = settings
 
         self.messages = MessagesPage(backend, settings, theme)
         self.notifications = NotificationsPage(backend, settings, theme)
@@ -99,6 +100,22 @@ class MainWindow(QMainWindow):
             if item is not None and item.text() == label:
                 self.nav.setCurrentRow(row)
                 return
+
+    def open_thread(self, device_id: str, thread_id: int) -> None:
+        """Bring the window up on a conversation (e.g. from a notification)."""
+        self._settings.set_active_device(device_id)
+        self.show_page("Messages")
+        self.messages.open_thread(thread_id)
+        self.show_and_raise()
+
+    def is_viewing(self, device_id: str, thread_id: int) -> bool:
+        """True if that thread is on screen right now (no need to notify)."""
+        return (
+            self.isActiveWindow()
+            and self.stack.currentWidget() is self.messages
+            and self._settings.active_device == device_id
+            and self.messages.current_thread == thread_id
+        )
 
     def show_and_raise(self) -> None:
         self.show()

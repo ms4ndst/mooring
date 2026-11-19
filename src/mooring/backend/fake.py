@@ -12,7 +12,14 @@ from datetime import datetime, timedelta
 
 from PyQt6.QtCore import QObject, QTimer
 
-from mooring.backend.base import Conversation, Device, Message, Notification, PhoneBackend
+from mooring.backend.base import (
+    Attachment,
+    Conversation,
+    Device,
+    Message,
+    Notification,
+    PhoneBackend,
+)
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +56,28 @@ _LINES = [
 ]
 
 _REPLIES = ["Sounds good!", "Haha, ok", "Will do 👍", "Let me check and get back to you"]
+
+
+def _fake_png(width: int = 320, height: int = 200) -> bytes:
+    """A synthetic 'sunset' gradient, so MMS rendering can be developed offline."""
+    from PyQt6.QtCore import QBuffer, QByteArray, QIODevice
+    from PyQt6.QtGui import QColor, QImage, QLinearGradient, QPainter
+
+    img = QImage(width, height, QImage.Format.Format_RGB32)
+    painter = QPainter(img)
+    grad = QLinearGradient(0, 0, 0, height)
+    grad.setColorAt(0, QColor("#f5a97f"))
+    grad.setColorAt(0.6, QColor("#c6a0f6"))
+    grad.setColorAt(1, QColor("#24273a"))
+    painter.fillRect(0, 0, width, height, grad)
+    painter.setBrush(QColor("#eed49f"))
+    painter.drawEllipse(width // 2 - 30, int(height * 0.55) - 30, 60, 60)
+    painter.end()
+    data = QByteArray()
+    buf = QBuffer(data)
+    buf.open(QIODevice.OpenModeFlag.WriteOnly)
+    img.save(buf, "PNG")
+    return bytes(data.data())
 
 
 class FakeBackend(PhoneBackend):
@@ -103,6 +132,19 @@ class FakeBackend(PhoneBackend):
             msgs.reverse()
             self._threads[PHONE_ID][thread_id] = msgs
         self._unread = {1000, 1002}
+
+        # A picture message (MMS) a few messages from the end of Sam's thread
+        sam = self._threads[PHONE_ID][1001]
+        pic = Message(
+            id=self._new_id(),
+            thread_id=1001,
+            addresses=sam[-1].addresses,
+            body="Look at this sunset!",
+            timestamp=sam[-3].timestamp + timedelta(seconds=30),
+            outgoing=False,
+            attachments=(Attachment(1, "image/png", "fake-sunset", _fake_png()),),
+        )
+        sam.insert(len(sam) - 2, pic)
 
         self._notifications[PHONE_ID] = [
             Notification("n1", "Calendar", "Standup in 10 minutes", "Room 3", now),
@@ -250,3 +292,11 @@ class FakeBackend(PhoneBackend):
 
     def share_url(self, device_id: str, url: str) -> None:
         log.info("fake: shared one url to %s", device_id)
+
+    def request_attachment(self, device_id: str, attachment: Attachment) -> None:
+        import tempfile
+        from pathlib import Path
+
+        path = Path(tempfile.gettempdir()) / f"mooring-fake-{attachment.unique_id}.png"
+        path.write_bytes(attachment.thumbnail)
+        QTimer.singleShot(0, lambda: self.attachmentReady.emit(device_id, str(path)))

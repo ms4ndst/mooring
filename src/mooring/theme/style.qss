@@ -78,6 +78,16 @@ QComboBox QAbstractItemView {
     outline: 0;
 }
 
+QCheckBox { spacing: 8px; }
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1px solid $surface2;
+    background: $surface0;
+}
+QCheckBox::indicator:checked { background: $accent; border-color: $accent; }
+
 QListView {
     background: transparent;
     border: none;

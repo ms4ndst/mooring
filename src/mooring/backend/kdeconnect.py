@@ -1,7 +1,7 @@
 """PhoneBackend on top of kdeconnectd's D-Bus API (via jeepney, see qjeepney.py).
 
-Phase 2 scope: devices, pairing, reachability, battery, ring, clipboard, share.
-SMS and notifications land in Phase 3 (decoding notes: docs/dbus-introspection.txt).
+Devices, pairing, reachability, links, battery, ring, clipboard, share (Phase 2) and
+SMS via SmsChannel (Phase 3, kdeconnect_sms.py). Phone notifications: not yet.
 
 Privacy: log device IDs (shortened) and counts only. Device names are user-chosen
 and may contain a person's name, so they're never logged.
@@ -18,7 +18,8 @@ from jeepney import DBusAddress, HeaderFields, MatchRule, Message
 from PyQt6.QtCore import QObject, QTimer
 
 from mooring.backend import dbus_paths as P
-from mooring.backend.base import Conversation, Device, Notification, PhoneBackend
+from mooring.backend.base import Attachment, Conversation, Device, Notification, PhoneBackend
+from mooring.backend.kdeconnect_sms import SmsChannel
 from mooring.backend.qjeepney import BusClient, DBusClient
 
 log = logging.getLogger(__name__)
@@ -81,6 +82,7 @@ class KdeConnectBackend(PhoneBackend):
         self._reload_timer.setSingleShot(True)
         self._reload_timer.setInterval(150)  # coalesce bursts of daemon signals
         self._reload_timer.timeout.connect(self.reload_devices)
+        self._sms = SmsChannel(self)
 
     # --- lifecycle -----------------------------------------------------------
 
@@ -111,6 +113,14 @@ class KdeConnectBackend(PhoneBackend):
                 path_namespace=P.DEVICES_NAMESPACE,
             ),
             self._from_daemon(self._on_battery_refreshed),
+        )
+        bus.subscribe(
+            MatchRule(
+                type="signal",
+                interface=P.CONVERSATIONS_IFACE,
+                path_namespace=P.DEVICES_NAMESPACE,
+            ),
+            self._from_daemon(self._on_conversation_signal),
         )
         owner_rule = MatchRule(
             type="signal",
@@ -183,6 +193,7 @@ class KdeConnectBackend(PhoneBackend):
                 for d in self._devices.values():
                     if d.reachable and d.trusted:
                         self._fetch_battery(d.id)
+                        self._sms.device_ready(d.id)
 
         for device_id in ids:
             self._fetch_device(device_id, fresh, done)
@@ -242,12 +253,17 @@ class KdeConnectBackend(PhoneBackend):
             self._update(device.id, reachable=reachable)
             if reachable and device.trusted:
                 self._fetch_battery(device.id)
+                self._sms.device_ready(device.id)
         elif member == "pairStateChanged":
             paired = int(body[0]) == P.PairState.PAIRED
             log.info("device %s pair state %d", short(device.id), int(body[0]))
             if paired != device.trusted:
                 self._update(device.id, trusted=paired)
                 self.devicesChanged.emit()  # pairing changes which devices are usable
+                if not paired:
+                    self._sms.forget_device(device.id)
+                elif device.reachable:
+                    self._sms.device_ready(device.id)
         elif member == "nameChanged":
             self._update(device.id, name=str(body[0]))
         elif member == "typeChanged":
@@ -262,11 +278,17 @@ class KdeConnectBackend(PhoneBackend):
             charging, charge = msg.body[0], msg.body[1]
             self._update(device_id, battery=int(charge), charging=bool(charging))
 
+    def _on_conversation_signal(self, msg: Message) -> None:
+        device_id = P.device_id_from_path(_path(msg))
+        if device_id in self._devices:
+            self._sms.on_signal(msg, _member(msg), device_id)
+
     def _on_owner_changed(self, msg: Message) -> None:
         _name, _old, new = msg.body
         self._owner = new or None
         if new:
             log.info("kdeconnectd (re)started")
+            self._sms = self._sms_after_restart()
             self._reload_timer.start()
         else:
             log.warning("kdeconnectd went away")
@@ -275,6 +297,11 @@ class KdeConnectBackend(PhoneBackend):
     def _on_bus_lost(self) -> None:
         self._set_all_unreachable()
         self.error.emit("Lost the connection to the D-Bus session bus")
+
+    def _sms_after_restart(self) -> SmsChannel:
+        # A restarted daemon has an empty cache and no memory of our page requests.
+        self._sms.deleteLater()
+        return SmsChannel(self)
 
     # --- helpers -------------------------------------------------------------
 
@@ -386,13 +413,13 @@ class KdeConnectBackend(PhoneBackend):
             failure="Couldn't send the file",
         )
 
-    # --- Phase 3 -------------------------------------------------------------
+    # --- messages ------------------------------------------------------------
 
     def conversations(self, device_id: str) -> list[Conversation]:
-        return []
+        return self._sms.conversations(device_id)
 
     def request_conversation(self, device_id: str, thread_id: int, start: int, end: int) -> None:
-        log.debug("request_conversation: not implemented until Phase 3")
+        self._sms.request_conversation(device_id, thread_id, start, end)
 
     def send_message(
         self,
@@ -401,10 +428,15 @@ class KdeConnectBackend(PhoneBackend):
         text: str,
         thread_id: int | None = None,
     ) -> None:
-        self.error.emit("Sending SMS arrives in Phase 3")
+        self._sms.send(device_id, addresses, text, thread_id)
+
+    def request_attachment(self, device_id: str, attachment: Attachment) -> None:
+        self._sms.request_attachment(device_id, attachment)
+
+    # --- phone notifications (not yet) ---------------------------------------
 
     def notifications(self, device_id: str) -> list[Notification]:
         return []
 
     def dismiss_notification(self, device_id: str, notification_id: str) -> None:
-        log.debug("dismiss_notification: not implemented until Phase 3")
+        log.debug("dismiss_notification: phone notifications are not implemented yet")
