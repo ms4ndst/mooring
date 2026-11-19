@@ -1,6 +1,6 @@
 Name:           mooring
 Version:        0.1.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Your Android phone on the Linux desktop
 
 License:        GPL-3.0-or-later
@@ -21,6 +21,7 @@ Requires:       android-tools
 Requires:       scrcpy
 # The Mirror page decodes video with PyAV, which isn't packaged for Fedora:
 #   pip install --user av
+# (found even though the launcher runs `python3 -sP`, see mooring/backend/pyav.py).
 # Without it, the Mirror page offers "Pop out" (a separate scrcpy window).
 
 %description
@@ -62,6 +63,10 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/io.github.ms4ndst.Moo
 %{_datadir}/icons/hicolor/scalable/apps/io.github.ms4ndst.Mooring.svg
 
 %changelog
+* Thu Nov 19 2026 ms4ndst - 0.1.0-2
+- Find PyAV installed with `pip install --user av`: the RPM launcher's
+  `python3 -s` hides user site-packages, so the Mirror page didn't see it
+
 * Thu Nov 19 2026 ms4ndst - 0.1.0-1
 - First release: messages, notifications, photos, files, clipboard,
   screen mirroring (embedded and scrcpy) and phone apps

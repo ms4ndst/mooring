@@ -29,6 +29,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtGui import QImage
 
 from mooring.backend import scrcpy_protocol as sp
+from mooring.backend.pyav import import_av
 
 log = logging.getLogger(__name__)
 
@@ -159,7 +160,7 @@ class H264Decoder:
     """PyAV decoder producing QImages (no numpy needed)."""
 
     def __init__(self) -> None:
-        import av  # imported lazily: only needed when mirroring
+        av = import_av()  # lazily, and also finds a `pip install --user av` under the RPM
 
         self._av = av
         self._ctx = av.CodecContext.create("h264", "r")

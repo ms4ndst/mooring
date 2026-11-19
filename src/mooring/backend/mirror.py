@@ -12,7 +12,6 @@ never package names, app names, serials or command output.
 
 from __future__ import annotations
 
-import importlib.util
 import logging
 import re
 import shutil
@@ -22,6 +21,7 @@ from dataclasses import dataclass, field
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, QProcess, pyqtSignal
 
+from mooring.backend.pyav import pyav_available
 from mooring.backend.scrcpy_client import AdbTransport, MirrorSession, find_server
 
 log = logging.getLogger(__name__)
@@ -109,11 +109,6 @@ def parse_app_list(text: str) -> list[PhoneApp]:
         apps.append(PhoneApp(name.strip() or package, package, stripped[0] == "*"))
     # your own apps first, then alphabetical
     return sorted(apps, key=lambda a: (a.system, a.name.casefold()))
-
-
-def pyav_available() -> bool:
-    """PyAV (optional extra ``mooring[mirror]``) decodes the embedded mirror's video."""
-    return importlib.util.find_spec("av") is not None
 
 
 def version_number(version: str) -> str:
