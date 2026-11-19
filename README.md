@@ -7,6 +7,19 @@ Catppuccin. Developed on Fedora + Niri (Wayland).
 Mooring is a front end. The phone protocol is handled by `kdeconnectd` (reached over D-Bus),
 and mirroring by `scrcpy`. See [PLAN.md](PLAN.md) for the architecture and phases.
 
+## Screenshots
+
+All screenshots use synthetic data (`scripts/screenshots.py` renders them from the fake
+backend), so no real messages, contacts, photos or phone screens appear.
+
+| Messages | Mirror |
+|---|---|
+| ![Messages: conversations and a thread with a picture message](docs/screenshots/messages.png) | ![Mirror: the phone's screen inside Mooring](docs/screenshots/mirror.png) |
+| **Photos** | **Notifications** |
+| ![Photos: newest photos from the phone](docs/screenshots/photos.png) | ![Notifications: the phone's notifications with reply](docs/screenshots/notifications.png) |
+| **Apps** | **Latte (light) theme** |
+| ![Apps: open a phone app in its own window](docs/screenshots/apps.png) | ![Messages in the Catppuccin Latte flavour](docs/screenshots/messages-latte.png) |
+
 ## Status
 
 - Phase 1 skeleton, Phase 2 device & connection: done.
@@ -73,6 +86,7 @@ the window quits the app.
 .venv/bin/pytest            # headless (QT_QPA_PLATFORM=offscreen)
 .venv/bin/ruff check src tests && .venv/bin/ruff format src tests
 .venv/bin/mypy
+QT_QPA_PLATFORM=offscreen .venv/bin/python scripts/screenshots.py   # refresh docs/screenshots
 ```
 
 ## Privacy
