@@ -1,6 +1,7 @@
 import pytest
 
 from mooring.app import ensure_active_device
+from mooring.backend import scrcpy_protocol as sp
 from mooring.theme.catppuccin import FLAVORS, Theme
 from mooring.ui.main_window import MainWindow
 from tests.fakes.fake_backend import PHONE_ID
@@ -295,11 +296,12 @@ def test_apps_page_lists_apps_and_opens_windows(qtbot, backend, settings, theme,
     assert page.status.text() == "2 apps · 2 system"
     assert settings.adb_serial_for(PHONE_ID) == ""  # single device: no need to save a choice
 
-    page.mirror_button.click()
     page.app_list.setCurrentRow(0)
     page.open_button.click()
+    page.app_list.setCurrentRow(1)
+    page.open_button.click()
     titles = [args[args.index("--window-title") + 1] for args, _ in fake_tools.spawned]
-    assert titles == ["Pixel (fake) · Mooring", "Example Chat"]
+    assert titles == ["Example Chat", "Maps Sample"]
     assert page.windows_label.text() == "2 windows open"
     page.close_windows.click()
     assert page.windows_label.text() == ""
@@ -328,7 +330,7 @@ def test_apps_page_explains_setup(qtbot, backend, settings, theme, fake_tools, a
     window.show_page("Apps")
     qtbot.waitUntil(lambda: expected in window.apps.help.text(), timeout=3000)
     assert window.apps.body.currentIndex() == 0
-    assert not window.apps.mirror_button.isEnabled()
+    assert not window.apps.open_button.isEnabled()
 
 
 def test_apps_page_without_tools(qtbot, backend, settings, theme, monkeypatch):
@@ -386,3 +388,87 @@ def test_notifications_reply_and_clear_all(qtbot, backend, settings, theme):
     assert page.model.rowCount() == 0
     assert page.empty.isVisibleTo(page) and "Notification sync" in page.empty.text()
     assert not page.clear_all.isEnabled()
+
+
+def mirror_window(qtbot, backend, settings, theme, server=None, factory=None):
+    from mooring.backend.scrcpy_client import MirrorSession
+    from tests.fakes.fake_scrcpy import FakeScrcpyServer
+
+    server = server or FakeScrcpyServer(width=100, height=200, frames=3)
+    window = make_window(qtbot, backend, settings, theme)
+    window.mirror.session_factory = factory or (lambda serial: MirrorSession(server.transport))
+    return window, server
+
+
+def test_mirror_page_starts_when_opened_and_stops_when_left(qtbot, backend, settings, theme):
+    window, server = mirror_window(qtbot, backend, settings, theme)
+    page = window.mirror_page
+    window.show_page("Mirror")
+    qtbot.waitUntil(lambda: page.session is not None and page.session.frames >= 1, timeout=5000)
+    assert page.body.currentIndex() == 1 and page.toggle_button.text() == "Stop"
+
+    page.home_button.click()
+    qtbot.waitUntil(lambda: len(server.control_bytes) >= 28, timeout=3000)
+    assert bytes(server.control_bytes[:14]) == sp.keycode(sp.KeyAction.DOWN, sp.Keycode.HOME)
+
+    window.show_page("Apps")  # leaving the page stops the stream
+    qtbot.waitUntil(lambda: page.session is None, timeout=5000)
+
+
+def test_mirror_stop_and_start_buttons(qtbot, backend, settings, theme):
+    from mooring.backend.scrcpy_client import MirrorSession
+    from tests.fakes.fake_scrcpy import FakeScrcpyServer
+
+    window, _ = mirror_window(
+        qtbot,
+        backend,
+        settings,
+        theme,
+        factory=lambda serial: MirrorSession(FakeScrcpyServer().transport),
+    )
+    page = window.mirror_page
+    window.show_page("Mirror")
+    qtbot.waitUntil(lambda: page.session is not None and page.session.running, timeout=5000)
+    page.toggle_button.click()  # Stop
+    qtbot.waitUntil(lambda: page.session is None, timeout=5000)
+    assert page.toggle_button.text() == "Start" and page.status.text() == "Stopped"
+    window.mirror.refresh_devices()  # a device refresh must not restart it after Stop
+    qtbot.wait(100)
+    assert page.session is None
+    page.toggle_button.click()  # Start
+    qtbot.waitUntil(lambda: page.session is not None and page.session.running, timeout=5000)
+
+
+def test_mirror_error_reaches_status_bar(qtbot, backend, settings, theme):
+    from mooring.backend.scrcpy_client import MirrorSession
+
+    def broken():
+        raise ConnectionError("Device is locked")
+
+    window, _ = mirror_window(
+        qtbot, backend, settings, theme, factory=lambda serial: MirrorSession(broken)
+    )
+    window.show_page("Mirror")
+    qtbot.waitUntil(lambda: "Device is locked" in window.mirror_page.status.text(), timeout=5000)
+    assert window.statusBar().currentMessage() == "Mirroring stopped: Device is locked"
+
+
+def test_mirror_pop_out_opens_scrcpy_window(qtbot, backend, settings, theme, fake_tools):
+    window, _ = mirror_window(qtbot, backend, settings, theme)
+    page = window.mirror_page
+    window.show_page("Mirror")
+    qtbot.waitUntil(lambda: page.session is not None, timeout=5000)
+    page.popout_button.click()
+    qtbot.waitUntil(lambda: page.session is None, timeout=5000)
+    ((args, _proc),) = fake_tools.spawned
+    assert args[args.index("--window-title") + 1] == "Pixel (fake) · Mooring"
+
+
+def test_mirror_page_explains_setup(qtbot, backend, settings, theme, fake_tools):
+    fake_tools.responses[("devices", "-l")] = (0, "List of devices attached\n\n", "")
+    window, _ = mirror_window(qtbot, backend, settings, theme)
+    window.show_page("Mirror")
+    page = window.mirror_page
+    qtbot.waitUntil(lambda: "No phone found over ADB" in page.help.text(), timeout=3000)
+    assert page.body.currentIndex() == 0 and page.session is None
+    assert not page.toggle_button.isEnabled()

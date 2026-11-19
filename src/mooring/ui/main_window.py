@@ -21,6 +21,7 @@ from mooring.theme.catppuccin import Theme
 from mooring.ui.pages.apps import AppsPage
 from mooring.ui.pages.files import FilesPage
 from mooring.ui.pages.messages import MessagesPage
+from mooring.ui.pages.mirror import MirrorPage
 from mooring.ui.pages.notifications import NotificationsPage
 from mooring.ui.pages.photos import PhotosPage
 from mooring.ui.pages.settings import SettingsPage
@@ -46,6 +47,7 @@ class MainWindow(QMainWindow):
 
         self.mirror = mirror or MirrorBackend(parent=self)
         self.apps = AppsPage(backend, settings, self.mirror)
+        self.mirror_page = MirrorPage(backend, settings, self.mirror, theme)
         self.photos = PhotosPage(backend, settings, theme)
         self.files = FilesPage(backend, settings)
         self.messages = MessagesPage(backend, settings, theme)
@@ -56,6 +58,7 @@ class MainWindow(QMainWindow):
             ("Notifications", "preferences-desktop-notification", self.notifications),
             ("Files", "folder", self.files),
             ("Apps", "applications-other", self.apps),
+            ("Mirror", "video-display", self.mirror_page),
             ("Settings", "preferences-system", SettingsPage(backend, settings)),
         ]
 

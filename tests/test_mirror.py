@@ -66,7 +66,7 @@ def mirror(qapp, fake_tools):
 
 
 def test_detects_tools_and_version(qtbot, mirror):
-    qtbot.waitUntil(lambda: mirror.tools.scrcpy_version == "scrcpy 5.0", timeout=1000)
+    qtbot.waitUntil(lambda: mirror.tools.scrcpy_version == "scrcpy 5.0.1", timeout=1000)
     assert mirror.tools.ready
 
 
@@ -161,3 +161,13 @@ def test_pairing_without_connect_address_relies_on_mdns(qtbot, mirror, fake_tool
         mirror.pair("1.2.3.4:37099", "123456")
     assert blocker.args == [True, "Paired"]
     assert not any(c[1][:1] == ("connect",) for c in fake_tools.calls)
+
+
+def test_version_number_and_embedded_readiness(qtbot, mirror):
+    from mooring.backend.mirror import version_number
+
+    assert version_number("scrcpy 5.0.1 <https://github.com/Genymobile/scrcpy>") == "5.0.1"
+    assert version_number("nope") == ""
+    qtbot.waitUntil(lambda: bool(mirror.tools.scrcpy_version), timeout=1000)
+    assert mirror.tools.server == "/fake/share/scrcpy/scrcpy-server"
+    assert mirror.tools.embedded_ready  # PyAV is installed in the dev env

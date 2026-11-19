@@ -1,4 +1,7 @@
-"""Apps: mirror the phone's screen, or open a single phone app in its own window."""
+"""Apps: open a single phone app in its own window (scrcpy), pair ADB over Wi-Fi.
+
+Mirroring the whole screen lives on its own page (pages/mirror.py).
+"""
 
 from __future__ import annotations
 
@@ -21,28 +24,11 @@ from PyQt6.QtWidgets import (
 )
 
 from mooring.backend.base import PhoneBackend
-from mooring.backend.mirror import AdbDevice, MirrorBackend, PhoneApp, Tools, pick_adb_device
+from mooring.backend.mirror import AdbDevice, MirrorBackend, PhoneApp, Tools
 from mooring.services.settings import SettingsStore
+from mooring.ui.pages.adb_common import chosen_device, setup_help
 from mooring.ui.pages.common import page_title
 from mooring.ui.widgets.pair_adb import PairAdbDialog
-
-SETUP_TOOLS = (
-    "Mirroring needs adb and scrcpy:\n\n"
-    "sudo dnf install android-tools scrcpy\n\n"
-    "Then press Refresh."
-)
-SETUP_DEVICE = (
-    "No phone found over ADB.\n\n"
-    "1. On the phone: Settings → About phone → tap “Build number” 7 times.\n"
-    "2. Settings → System → Developer options → turn on USB debugging\n"
-    "    (or Wireless debugging, then use “Pair over Wi-Fi”).\n"
-    "3. Connect the USB cable and allow this computer on the phone.\n\n"
-    "Then press Refresh."
-)
-SETUP_UNAUTHORIZED = (
-    "The phone hasn't allowed this computer yet.\n\n"
-    "Unlock the phone and accept “Allow USB debugging?”, then press Refresh."
-)
 
 
 class AppsPage(QWidget):
@@ -66,15 +52,13 @@ class AppsPage(QWidget):
         self.device_combo.setMinimumWidth(200)
         self.refresh_button = QPushButton("Refresh")
         self.pair_button = QPushButton("Pair over Wi-Fi")
-        self.mirror_button = QPushButton("Mirror screen")
-        self.mirror_button.setObjectName("primary")
 
         header = QHBoxLayout()
         header.addWidget(page_title("Apps"))
         header.addWidget(self.status, 1)
         header.addWidget(self.device_combo)
-        for b in (self.refresh_button, self.pair_button, self.mirror_button):
-            header.addWidget(b)
+        header.addWidget(self.refresh_button)
+        header.addWidget(self.pair_button)
 
         # Page 0: setup help. Page 1: app list.
         self.help = QLabel()
@@ -90,6 +74,7 @@ class AppsPage(QWidget):
         self.app_list.setObjectName("appList")
         self.app_list.setMouseTracking(True)
         self.open_button = QPushButton("Open in its own window")
+        self.open_button.setObjectName("primary")
         self.windows_label = QLabel()
         self.windows_label.setObjectName("muted")
         self.close_windows = QPushButton("Close all windows")
@@ -116,7 +101,6 @@ class AppsPage(QWidget):
 
         self.refresh_button.clicked.connect(self.refresh)
         self.pair_button.clicked.connect(self._pair)
-        self.mirror_button.clicked.connect(self._mirror)
         self.open_button.clicked.connect(self._open_selected)
         self.close_windows.clicked.connect(mirror.close_all)
         self.app_list.itemActivated.connect(lambda _i: self._open_selected())
@@ -141,25 +125,21 @@ class AppsPage(QWidget):
 
     def refresh(self) -> None:
         self.status.setText("Looking for the phone…")
+        self._apps = []
         self.mirror.detect_tools(self._on_tools)
 
     def _on_tools(self, tools: Tools) -> None:
-        if not tools.ready:
-            self._show_help(SETUP_TOOLS)
-            self.status.setText("")
-            self._fill_devices([])
-            return
-        self.mirror.refresh_devices()
+        if tools.ready:
+            self.mirror.refresh_devices()
+        else:
+            self._on_adb_devices()
 
     def _on_adb_devices(self) -> None:
-        if not self.mirror.tools.ready:
-            return
-        devices = self.mirror.devices()
-        self._fill_devices(devices)
+        self._fill_devices(self.mirror.devices())
+        problem = setup_help(self.mirror)
         chosen = self.current_device()
-        if chosen is None:
-            unauthorized = any(d.state == "unauthorized" for d in devices)
-            self._show_help(SETUP_UNAUTHORIZED if unauthorized else SETUP_DEVICE)
+        if problem is not None or chosen is None:
+            self._show_help(problem or "")
             self.status.setText("")
             return
         self.body.setCurrentIndex(1)
@@ -169,11 +149,7 @@ class AppsPage(QWidget):
         self._update_buttons()
 
     def _fill_devices(self, devices: list[AdbDevice]) -> None:
-        kde_id = self._settings.active_device
-        kde = self._backend.device(kde_id)
-        best = pick_adb_device(
-            devices, kde.name if kde else "", self._settings.adb_serial_for(kde_id)
-        )
+        best = chosen_device(self.mirror, self._backend, self._settings)
         self.device_combo.blockSignals(True)
         self.device_combo.clear()
         for d in devices:
@@ -192,7 +168,7 @@ class AppsPage(QWidget):
         if device is None:
             return
         if kde_id := self._settings.active_device:
-            self._settings.set_adb_serial(kde_id, device.serial)
+            self._settings.set_adb_serial(kde_id, device.serial)  # Mirror page uses it too
         self._apps = []
         self._fill_apps()
         self.status.setText("Loading apps…")
@@ -228,17 +204,8 @@ class AppsPage(QWidget):
 
     def _update_buttons(self) -> None:
         has_device = self.current_device() is not None
-        self.mirror_button.setEnabled(has_device)
         self.pair_button.setEnabled(bool(self.mirror.tools.adb))
         self.open_button.setEnabled(has_device and self.app_list.currentItem() is not None)
-
-    def _mirror(self) -> None:
-        device = self.current_device()
-        if device is None:
-            return
-        kde = self._backend.device(self._settings.active_device)
-        name = kde.name if kde else device.model or "Phone"
-        self.mirror.mirror(device.serial, f"{name} · Mooring")
 
     def _open_selected(self) -> None:
         device, item = self.current_device(), self.app_list.currentItem()

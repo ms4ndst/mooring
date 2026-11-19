@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, QProcess, pyqtSignal
 
+from mooring.backend.scrcpy_client import AdbTransport, MirrorSession, find_server
+
 log = logging.getLogger(__name__)
 
 
@@ -59,13 +61,25 @@ class Tools:
     adb: str | None = None
     scrcpy: str | None = None
     scrcpy_version: str = ""
+    server: str | None = None  # scrcpy-server jar, needed for the embedded mirror
+
+    @property
+    def embedded_ready(self) -> bool:
+        """Mooring can mirror inside its own window (needs PyAV and the server jar)."""
+        if not (self.adb and self.server and version_number(self.scrcpy_version)):
+            return False
+        try:
+            import av  # noqa: F401
+        except ImportError:
+            return False
+        return True
 
     @property
     def ready(self) -> bool:
         return bool(self.adb and self.scrcpy)
 
 
-_SCRCPY_VERSION = re.compile(r"scrcpy (\d+)\.(\d+)")
+_SCRCPY_VERSION = re.compile(r"scrcpy (\d+(?:\.\d+)+)")
 
 
 def parse_adb_devices(text: str) -> list[AdbDevice]:
@@ -100,9 +114,18 @@ def parse_app_list(text: str) -> list[PhoneApp]:
     return sorted(apps, key=lambda a: (a.system, a.name.casefold()))
 
 
-def scrcpy_supports_apps(version: str) -> bool:
+def version_number(version: str) -> str:
+    """'scrcpy 5.0.1 <https://...>' -> '5.0.1' ('' if unknown)."""
     m = _SCRCPY_VERSION.search(version)
-    return m is not None and (int(m.group(1)), int(m.group(2))) >= (3, 0)
+    return m.group(1) if m else ""
+
+
+def scrcpy_supports_apps(version: str) -> bool:
+    number = version_number(version)
+    if not number:
+        return False
+    major, minor = (int(p) for p in ([*number.split("."), "0"])[:2])
+    return (major, minor) >= (3, 0)
 
 
 def pick_adb_device(
@@ -217,6 +240,8 @@ class MirrorBackend(QObject):
         self.tools = Tools()
         self._devices: list[AdbDevice] = []
         self._windows: list[_Window] = []
+        #: Replaces how sessions are made (tests use a fake server).
+        self.session_factory: Callable[[str], MirrorSession] | None = None
 
     def _alive(self, fn: Done) -> Done:
         """Drop callbacks that arrive after this backend was destroyed (e.g. app quit)."""
@@ -230,7 +255,7 @@ class MirrorBackend(QObject):
     # --- discovery -----------------------------------------------------------
 
     def detect_tools(self, done: Callable[[Tools], None] | None = None) -> None:
-        self.tools = Tools(shutil.which("adb"), shutil.which("scrcpy"))
+        self.tools = Tools(shutil.which("adb"), shutil.which("scrcpy"), server=find_server())
         if not self.tools.scrcpy:
             if done:
                 done(self.tools)
@@ -238,7 +263,7 @@ class MirrorBackend(QObject):
 
         def got(_code: int, out: str, err: str) -> None:
             m = _SCRCPY_VERSION.search(out + err)
-            self.tools.scrcpy_version = m.group(0) if m else ""
+            self.tools.scrcpy_version = m.group(0) if m else ""  # e.g. "scrcpy 5.0.1"
             if done:
                 done(self.tools)
 
@@ -341,6 +366,21 @@ class MirrorBackend(QObject):
         self._windows.append(window)
         log.info("scrcpy window opened (%d open)", len(self._windows))
         self.windowsChanged.emit(len(self._windows))
+
+    # --- embedded mirror -----------------------------------------------------
+
+    def new_session(self, serial: str, max_size: int = 1600) -> MirrorSession | None:
+        """A MirrorSession for the phone, or None (and an error) if it can't be done."""
+        if self.session_factory is not None:
+            return self.session_factory(serial)
+        tools = self.tools
+        if not tools.embedded_ready or tools.adb is None or tools.server is None:
+            self.error.emit("Mirroring in Mooring needs adb, scrcpy (with scrcpy-server) and PyAV")
+            return None
+        adb, server, version = tools.adb, tools.server, version_number(tools.scrcpy_version)
+        return MirrorSession(
+            lambda: AdbTransport(adb, serial, server, version, max_size).open(), parent=self
+        )
 
     def close_all(self) -> None:
         for w in list(self._windows):

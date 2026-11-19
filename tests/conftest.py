@@ -46,6 +46,7 @@ def fake_tools(monkeypatch):
         "which",
         lambda name: f"/fake/bin/{name}" if name in ("adb", "scrcpy") else None,
     )
+    monkeypatch.setattr(mirror, "find_server", lambda: "/fake/share/scrcpy/scrcpy-server")
     original_init = mirror.MirrorBackend.__init__
 
     def init(self, runner_arg=None, parent=None):
