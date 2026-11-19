@@ -94,6 +94,19 @@ QListView {
     outline: 0;
 }
 
+#appList {
+    background: transparent;
+    border: none;
+    outline: 0;
+}
+#appList::item {
+    padding: 9px 12px;
+    margin: 1px 0;
+    border-radius: 8px;
+}
+#appList::item:hover { background: $surface0; }
+#appList::item:selected { background: $surface1; color: $text; }
+
 QSplitter::handle { background: $surface0; }
 QSplitter::handle:horizontal { width: 1px; }
 

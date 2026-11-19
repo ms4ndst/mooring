@@ -1,3 +1,5 @@
+import pytest
+
 from mooring.app import ensure_active_device
 from mooring.theme.catppuccin import FLAVORS, Theme
 from mooring.ui.main_window import MainWindow
@@ -277,3 +279,88 @@ def test_human_size():
     assert human_size(512) == "512 bytes"
     assert human_size(300 * 1024) == "300.0 KB"
     assert human_size(5 * 1024 * 1024) == "5.0 MB"
+
+
+def open_apps(qtbot, window):
+    window.show_page("Apps")
+    qtbot.waitUntil(lambda: window.apps.app_list.count() > 0, timeout=3000)
+    return window.apps
+
+
+def test_apps_page_lists_apps_and_opens_windows(qtbot, backend, settings, theme, fake_tools):
+    window = make_window(qtbot, backend, settings, theme)
+    page = open_apps(qtbot, window)
+    assert page.app_list.item(0).text() == "Example Chat"
+    assert page.app_list.item(3).text().endswith("system")
+    assert page.status.text() == "2 apps · 2 system"
+    assert settings.adb_serial_for(PHONE_ID) == ""  # single device: no need to save a choice
+
+    page.mirror_button.click()
+    page.app_list.setCurrentRow(0)
+    page.open_button.click()
+    titles = [args[args.index("--window-title") + 1] for args, _ in fake_tools.spawned]
+    assert titles == ["Pixel (fake) · Mooring", "Example Chat"]
+    assert page.windows_label.text() == "2 windows open"
+    page.close_windows.click()
+    assert page.windows_label.text() == ""
+
+
+def test_apps_search(qtbot, backend, settings, theme):
+    window = make_window(qtbot, backend, settings, theme)
+    page = open_apps(qtbot, window)
+    page.filter.setText("maps")
+    assert [page.app_list.item(i).text() for i in range(page.app_list.count())] == ["Maps Sample"]
+    page.filter.setText("org.example")
+    assert page.app_list.count() == 2
+
+
+@pytest.mark.parametrize(
+    ("adb_out", "expected"),
+    [
+        ("List of devices attached\n\n", "No phone found over ADB"),
+        ("List of devices attached\nXYZ  unauthorized usb:1-1\n", "hasn't allowed this computer"),
+    ],
+    ids=["no-device", "unauthorized"],
+)
+def test_apps_page_explains_setup(qtbot, backend, settings, theme, fake_tools, adb_out, expected):
+    fake_tools.responses[("devices", "-l")] = (0, adb_out, "")
+    window = make_window(qtbot, backend, settings, theme)
+    window.show_page("Apps")
+    qtbot.waitUntil(lambda: expected in window.apps.help.text(), timeout=3000)
+    assert window.apps.body.currentIndex() == 0
+    assert not window.apps.mirror_button.isEnabled()
+
+
+def test_apps_page_without_tools(qtbot, backend, settings, theme, monkeypatch):
+    import mooring.backend.mirror as mirror
+
+    monkeypatch.setattr(mirror.shutil, "which", lambda name: None)
+    window = make_window(qtbot, backend, settings, theme)
+    window.show_page("Apps")
+    qtbot.waitUntil(
+        lambda: "dnf install android-tools scrcpy" in window.apps.help.text(), timeout=3000
+    )
+    assert not window.apps.pair_button.isEnabled()
+
+
+def test_pair_from_apps_page(qtbot, backend, settings, theme, fake_tools):
+    fake_tools.responses[("pair",)] = (0, "Successfully paired to 1.2.3.4:37099\n", "")
+    window = make_window(qtbot, backend, settings, theme)
+    page = open_apps(qtbot, window)
+    page.ask_pairing = lambda: ("1.2.3.4:37099", "123456", "")
+    page.pair_button.click()
+    qtbot.waitUntil(lambda: page.status.text() == "Paired", timeout=2000)
+
+
+def test_pair_dialog_validation(qtbot):
+    from mooring.ui.widgets.pair_adb import PairAdbDialog
+
+    d = PairAdbDialog()
+    qtbot.addWidget(d)
+    d.pair_address.setText("192.168.1.20:37099")
+    d.code.setText("12345")
+    assert d.result_value() is None
+    d.code.setText("123456")
+    assert d.result_value() == ("192.168.1.20:37099", "123456", "")
+    d.connect_address.setText("not an address")
+    assert d.result_value() is None

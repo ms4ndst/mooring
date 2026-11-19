@@ -32,3 +32,24 @@ def _isolate_user_data(tmp_path, monkeypatch):
     """Tests must never read real synced contacts or write to the real cache."""
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+
+
+@pytest.fixture(autouse=True)
+def fake_tools(monkeypatch):
+    """No test may run the real adb/scrcpy (it would talk to a real phone)."""
+    import mooring.backend.mirror as mirror
+    from tests.fakes.fake_runner import FakeRunner
+
+    runner = FakeRunner()
+    monkeypatch.setattr(
+        mirror.shutil,
+        "which",
+        lambda name: f"/fake/bin/{name}" if name in ("adb", "scrcpy") else None,
+    )
+    original_init = mirror.MirrorBackend.__init__
+
+    def init(self, runner_arg=None, parent=None):
+        original_init(self, runner_arg or runner, parent)
+
+    monkeypatch.setattr(mirror.MirrorBackend, "__init__", init)
+    return runner

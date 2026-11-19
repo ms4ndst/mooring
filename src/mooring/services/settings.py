@@ -34,6 +34,13 @@ class SettingsStore(QObject):
     def set_notify_show_text(self, show: bool) -> None:
         self._s.setValue("notifications/show_text", "true" if show else "false")
 
+    def adb_serial_for(self, device_id: str) -> str:
+        """ADB serial the user picked for a KDE Connect device ('' = not chosen)."""
+        return str(self._s.value(f"mirror/{device_id}/serial", ""))
+
+    def set_adb_serial(self, device_id: str, serial: str) -> None:
+        self._s.setValue(f"mirror/{device_id}/serial", serial)
+
     @property
     def active_device(self) -> str:
         """Empty string when no device has been chosen."""

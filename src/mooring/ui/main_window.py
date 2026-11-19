@@ -15,9 +15,10 @@ from PyQt6.QtWidgets import (
 )
 
 from mooring.backend.base import PhoneBackend
+from mooring.backend.mirror import MirrorBackend
 from mooring.services.settings import SettingsStore
 from mooring.theme.catppuccin import Theme
-from mooring.ui.pages.common import PlaceholderPage
+from mooring.ui.pages.apps import AppsPage
 from mooring.ui.pages.files import FilesPage
 from mooring.ui.pages.messages import MessagesPage
 from mooring.ui.pages.notifications import NotificationsPage
@@ -32,6 +33,7 @@ class MainWindow(QMainWindow):
         backend: PhoneBackend,
         settings: SettingsStore,
         theme: Theme,
+        mirror: MirrorBackend | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -42,6 +44,8 @@ class MainWindow(QMainWindow):
         self._backend = backend
         self.setAcceptDrops(True)
 
+        self.mirror = mirror or MirrorBackend(parent=self)
+        self.apps = AppsPage(backend, settings, self.mirror)
         self.photos = PhotosPage(backend, settings, theme)
         self.files = FilesPage(backend, settings)
         self.messages = MessagesPage(backend, settings, theme)
@@ -51,11 +55,7 @@ class MainWindow(QMainWindow):
             ("Photos", "image-x-generic", self.photos),
             ("Notifications", "preferences-desktop-notification", self.notifications),
             ("Files", "folder", self.files),
-            (
-                "Apps",
-                "applications-other",
-                PlaceholderPage("Apps", "Screen mirroring and phone apps arrive in Phase 5."),
-            ),
+            ("Apps", "applications-other", self.apps),
             ("Settings", "preferences-system", SettingsPage(backend, settings)),
         ]
 
@@ -89,6 +89,7 @@ class MainWindow(QMainWindow):
         if bar := self.statusBar():
             bar.setSizeGripEnabled(False)
         backend.error.connect(self.show_error)
+        self.mirror.error.connect(self.show_error)
 
     # --- drop files to send them to the phone --------------------------------
 

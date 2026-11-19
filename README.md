@@ -14,7 +14,14 @@ and mirroring by `scrcpy`. See [PLAN.md](PLAN.md) for the architecture and phase
   sync), threads with lazy loading, reply, new message to a number, MMS pictures
   (thumbnails, click to open), desktop notifications with Open/Reply (inline reply on
   daemons that support it, e.g. Plasma or swaync; dunst opens the thread instead).
-- Phone notifications page, photos, files and mirroring: later phases.
+- Phase 4 photos, files, clipboard: photo grid with cached thumbnails, Save to Pictures,
+  drag out; drop files on the window to send them; clipboard push and sync toggle.
+- Phase 5 mirroring & apps: mirror the screen or open one phone app in its own window
+  (scrcpy 3.0+, Niri opens each as a column); USB or Wi-Fi (wireless debugging) pairing.
+- Phone notifications page and calls (Phase 6): later.
+
+Mirroring needs developer options on the phone: USB debugging (or Wireless debugging)
+and `sudo dnf install android-tools scrcpy`.
 
 Phone-side requirements: SMS and Contacts permissions for the KDE Connect app, and
 its battery usage set to "Unrestricted", or Android delays SMS sync in the background.
