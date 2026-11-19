@@ -1,6 +1,7 @@
 [build-system]
-requires = ["hatchling>=1.24"]
-build-backend = "hatchling.build"
+# setuptools (not hatchling): Fedora ships it by default, so the RPM builds without extras.
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "mooring"
@@ -8,23 +9,30 @@ version = "0.1.0"
 description = "A Phone Link-style hub for Linux, built on KDE Connect and scrcpy"
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "GPL-3.0-or-later" }
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 dependencies = [
     "PyQt6>=6.6",
     "pillow>=10",
     "jeepney>=0.8",  # D-Bus: PyQt6's QtDBus can't demarshal KDE Connect's structs
-    "av>=12",  # PyAV: decodes the phone's H.264 stream for the embedded mirror
 ]
 
 [project.optional-dependencies]
 # PyQt6 6.12 ships broken .pyi stubs (pyqtSignal, QObject.__init__); dev envs use 6.11.
-dev = ["PyQt6>=6.6,<6.12", "pytest>=8", "pytest-qt>=4.4", "ruff>=0.6", "mypy>=1.10"]
+dev = ["PyQt6>=6.6,<6.12", "av>=12", "pytest>=8", "pytest-qt>=4.4", "ruff>=0.6", "mypy>=1.10"]
+# The Mirror page decodes the phone's H.264 stream with PyAV. Not packaged for Fedora,
+# so it's optional: `pip install --user av`. Without it, use Pop out (scrcpy window).
+mirror = ["av>=12"]
 
 [project.scripts]
 mooring = "mooring.app:main"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/mooring"]
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"mooring.theme" = ["*.qss"]
+"mooring.resources" = ["icons/*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -50,4 +58,4 @@ check_untyped_defs = true
 
 [[tool.mypy.overrides]]
 module = ["jeepney", "jeepney.*", "av", "av.*"]
-ignore_missing_imports = true  # jeepney ships no type information
+ignore_missing_imports = true  # jeepney and PyAV ship no type information

@@ -7,13 +7,14 @@ import logging
 import os
 import sys
 
-from PyQt6.QtCore import QObject, QRectF, Qt, QThreadPool, pyqtSignal
-from PyQt6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
+from PyQt6.QtCore import QObject, QThreadPool, pyqtSignal
+from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from mooring import __version__
 from mooring.backend.base import PhoneBackend
+from mooring.resources.icons import APP_ID, app_icon
 from mooring.services.notifier import Notifier
 from mooring.services.settings import SettingsStore
 from mooring.theme.catppuccin import FLAVORS, Theme
@@ -56,23 +57,6 @@ class SingleInstance(QObject):
             conn.disconnected.connect(conn.deleteLater)
             conn.close()
             self.activated.emit()
-
-
-def app_icon(theme: Theme) -> QIcon:
-    themed = QIcon.fromTheme("smartphone")
-    if not themed.isNull():
-        return themed
-    pix = QPixmap(64, 64)
-    pix.fill(QColor(0, 0, 0, 0))
-    p = QPainter(pix)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(theme.color("accent"))
-    p.drawRoundedRect(QRectF(16, 4, 32, 56), 8, 8)
-    p.setBrush(theme.color("crust"))
-    p.drawRoundedRect(QRectF(20, 10, 24, 40), 3, 3)
-    p.end()
-    return QIcon(pix)
 
 
 def make_tray(
@@ -128,12 +112,26 @@ def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument("--fake", action="store_true", help="use synthetic data, no phone needed")
     parser.add_argument("--flavor", choices=sorted(FLAVORS), help="Catppuccin flavour")
     parser.add_argument("--debug", action="store_true", help="verbose logging (IDs only)")
+    parser.add_argument(
+        "--hidden", action="store_true", help="start in the tray (used by Start at login)"
+    )
+    parser.add_argument(
+        "--install-desktop-entry",
+        action="store_true",
+        help="add a launcher and icon for this user (when running from a venv) and exit",
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser.parse_known_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args, qt_args = parse_args(sys.argv[1:] if argv is None else argv)
+    if args.install_desktop_entry:
+        from mooring.services.desktop import install_desktop_entry
+
+        for path in install_desktop_entry():
+            print(f"wrote {path}")
+        return 0
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -143,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("Mooring")
     app.setOrganizationName("mooring")
     app.setApplicationVersion(__version__)
-    app.setDesktopFileName("mooring")
+    app.setDesktopFileName(APP_ID)  # Wayland app_id; must match the .desktop file
 
     instance = SingleInstance()
     if not instance.acquire():
@@ -163,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
     backend.devicesChanged.connect(lambda: ensure_active_device(backend, settings))
 
     window = MainWindow(backend, settings, theme)
-    icon = app_icon(theme)
+    icon = app_icon()
     app.setWindowIcon(icon)
     instance.activated.connect(window.show_and_raise)
 
@@ -186,7 +184,10 @@ def main(argv: list[str] | None = None) -> int:
     app.aboutToQuit.connect(_drain_thread_pool)
 
     backend.start()
-    window.show()
+    if args.hidden and window.hide_on_close:
+        log.info("started hidden in the tray")
+    else:
+        window.show()
     return app.exec()
 
 

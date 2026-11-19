@@ -20,7 +20,7 @@ QMainWindow, QDialog {
     outline: 0;
 }
 #nav::item {
-    padding: 9px 12px;
+    padding: 6px 12px;
     margin: 1px 10px;
     border-radius: 8px;
     color: $subtext1;

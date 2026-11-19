@@ -27,7 +27,7 @@ def h264_packets(count: int = 5, width: int = 64, height: int = 128) -> list[tup
     out: list[tuple[bytes, bool]] = []
     for i in range(count):
         frame = av.VideoFrame(width, height, "yuv420p")
-        for plane, value in zip(frame.planes, (40 + i * 30, 128, 128), strict=True):
+        for plane, value in zip(frame.planes, ((40 + i * 30) % 256, 128, 128), strict=True):
             plane.update(bytes([value]) * plane.buffer_size)
         frame.pts = i
         out += [(bytes(p), p.is_keyframe) for p in ctx.encode(frame)]

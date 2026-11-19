@@ -19,11 +19,11 @@ from PyQt6.QtWidgets import (
 
 from mooring.backend import scrcpy_protocol as sp
 from mooring.backend.base import PhoneBackend
-from mooring.backend.mirror import MirrorBackend, Tools
+from mooring.backend.mirror import MirrorBackend, Tools, pyav_available
 from mooring.backend.scrcpy_client import MirrorSession
 from mooring.services.settings import SettingsStore
 from mooring.theme.catppuccin import Theme
-from mooring.ui.pages.adb_common import chosen_device, setup_help
+from mooring.ui.pages.adb_common import NEEDS_PYAV, chosen_device, setup_help
 from mooring.ui.pages.common import page_title
 from mooring.ui.widgets.phone_view import PhoneView
 
@@ -130,6 +130,8 @@ class MirrorPage(QWidget):
         if not self.isVisible():
             return
         problem = setup_help(self.mirror)
+        if problem is None and not pyav_available():
+            problem = NEEDS_PYAV  # Pop out still works: it only needs scrcpy
         if problem is not None and self.session is None:
             self.help.setText(problem)
             self.body.setCurrentIndex(0)

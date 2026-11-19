@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import QSize, Qt, QUrl
 from PyQt6.QtGui import QCloseEvent, QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import (
     QHBoxLayout,
@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 
 from mooring.backend.base import PhoneBackend
 from mooring.backend.mirror import MirrorBackend
+from mooring.resources.icons import tinted_icon
 from mooring.services.settings import SettingsStore
 from mooring.theme.catppuccin import Theme
 from mooring.ui.pages.apps import AppsPage
@@ -53,21 +54,27 @@ class MainWindow(QMainWindow):
         self.messages = MessagesPage(backend, settings, theme)
         self.notifications = NotificationsPage(backend, settings, theme)
         pages: list[tuple[str, str, QWidget]] = [
-            ("Messages", "mail-message", self.messages),
-            ("Photos", "image-x-generic", self.photos),
-            ("Notifications", "preferences-desktop-notification", self.notifications),
-            ("Files", "folder", self.files),
-            ("Apps", "applications-other", self.apps),
-            ("Mirror", "video-display", self.mirror_page),
-            ("Settings", "preferences-system", SettingsPage(backend, settings)),
+            ("Messages", "messages", self.messages),
+            ("Photos", "photos", self.photos),
+            ("Notifications", "notifications", self.notifications),
+            ("Files", "files", self.files),
+            ("Apps", "apps", self.apps),
+            ("Mirror", "mirror", self.mirror_page),
+            ("Settings", "settings", SettingsPage(backend, settings)),
         ]
 
         self.nav = QListWidget()
         self.nav.setObjectName("nav")
         self.stack = QStackedWidget()
-        for label, _icon, page in pages:
-            QListWidgetItem(label, self.nav)  # TODO: bundled icons (theme icons are spotty)
+        self._icon_names: list[str] = []
+        for label, icon_name, page in pages:
+            QListWidgetItem(label, self.nav)
+            self._icon_names.append(icon_name)
             self.stack.addWidget(page)
+        self.nav.setIconSize(QSize(20, 20))
+        self._theme = theme
+        self._tint_icons()
+        theme.changed.connect(self._tint_icons)
         self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
         self.nav.setCurrentRow(0)
 
@@ -147,6 +154,13 @@ class MainWindow(QMainWindow):
             if item is not None and item.text() == label:
                 self.nav.setCurrentRow(row)
                 return
+
+    def _tint_icons(self) -> None:
+        """Sidebar icons follow the Catppuccin flavour (and brighten when selected)."""
+        normal, selected = self._theme.hex("subtext1"), self._theme.hex("text")
+        for row, name in enumerate(self._icon_names):
+            if item := self.nav.item(row):
+                item.setIcon(tinted_icon(name, normal, selected))
 
     def open_thread(self, device_id: str, thread_id: int) -> None:
         """Bring the window up on a conversation (e.g. from a notification)."""

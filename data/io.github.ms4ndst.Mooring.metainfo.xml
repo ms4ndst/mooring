@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.ms4ndst.Mooring</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Mooring</name>
+  <summary>Your Android phone on the Linux desktop</summary>
+  <developer id="io.github.ms4ndst">
+    <name>ms4ndst</name>
+  </developer>
+  <description>
+    <p>
+      Mooring brings your Android phone to the desktop in one window: read and send
+      text messages, see and answer the phone's notifications, browse the newest photos,
+      send files and the clipboard, and show the phone's screen or run a single phone app
+      in its own window.
+    </p>
+    <p>
+      It is a front end: the phone connection is handled by KDE Connect, and mirroring by
+      scrcpy and adb.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.ms4ndst.Mooring.desktop</launchable>
+  <url type="homepage">https://github.com/ms4ndst/mooring</url>
+  <url type="bugtracker">https://github.com/ms4ndst/mooring/issues</url>
+  <categories>
+    <category>Network</category>
+    <category>Telephony</category>
+  </categories>
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-11-19">
+      <description>
+        <p>First release: messages, notifications, photos, files, clipboard, screen mirroring and phone apps.</p>
+      </description>
+    </release>
+  </releases>
+</component>

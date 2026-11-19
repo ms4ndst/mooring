@@ -26,30 +26,44 @@ and `sudo dnf install android-tools scrcpy`.
 Phone-side requirements: SMS and Contacts permissions for the KDE Connect app, and
 its battery usage set to "Unrestricted", or Android delays SMS sync in the background.
 
-## Setup (Fedora)
+## Install (Fedora)
+
+Build and install the RPM (it pulls in KDE Connect, sshfs, adb and scrcpy):
 
 ```bash
-sudo dnf install kde-connect fuse-sshfs android-tools scrcpy
-sudo firewall-cmd --permanent --add-service=kdeconnect && sudo firewall-cmd --reload
+./scripts/build-rpm.sh
+sudo dnf install build/rpm/RPMS/noarch/mooring-*.noarch.rpm
+```
 
+The **Mirror** page shows the phone inside Mooring and decodes the video with PyAV, which
+isn't packaged for Fedora. Install it for your user to enable it:
+
+```bash
+pip install --user av
+```
+
+Without it, the Mirror page offers **Pop out** (a separate scrcpy window).
+
+Then: open KDE Connect on the phone and pair, grant it SMS/Contacts permissions and set
+its battery use to "Unrestricted". For mirroring and phone apps, turn on USB (or
+Wireless) debugging in the phone's developer options. Settings → "Start Mooring when I
+log in" starts it in the tray.
+
+## Run from a checkout
+
+```bash
 python3 -m venv .venv
-.venv/bin/pip install -e ".[dev]"
+.venv/bin/pip install -e ".[dev]"          # dev extra includes PyAV
+.venv/bin/mooring --install-desktop-entry  # launcher + icon in ~/.local/share
+.venv/bin/mooring                          # or: --fake for synthetic data, --hidden for tray
 ```
 
 PyQt6 6.12 ships broken type stubs, so the `dev` extra pins 6.11 so mypy stays usable.
 The runtime itself works with either version.
 
-## Run
-
-```bash
-.venv/bin/python -m mooring --fake            # synthetic data, no phone needed
-.venv/bin/python -m mooring --fake --flavor latte
-```
-
-Or press F5 in VS Code ("Mooring (fake backend)").
-
-Niri has no built-in tray or notification daemon. The tray icon shows up in Waybar (its
-StatusNotifierItem module). Without a tray, closing the window quits the app.
+Niri has no built-in tray or notification daemon: the tray icon shows up in Waybar (its
+StatusNotifierItem module), notifications need mako/dunst/swaync. Without a tray, closing
+the window quits the app.
 
 ## Develop
 

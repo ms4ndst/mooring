@@ -472,3 +472,33 @@ def test_mirror_page_explains_setup(qtbot, backend, settings, theme, fake_tools)
     qtbot.waitUntil(lambda: "No phone found over ADB" in page.help.text(), timeout=3000)
     assert page.body.currentIndex() == 0 and page.session is None
     assert not page.toggle_button.isEnabled()
+
+
+def test_mirror_page_without_pyav_offers_pop_out(qtbot, backend, settings, theme, monkeypatch):
+    import mooring.ui.pages.mirror as mirror_page
+
+    monkeypatch.setattr(mirror_page, "pyav_available", lambda: False)
+    window, _ = mirror_window(qtbot, backend, settings, theme)
+    window.show_page("Mirror")
+    page = window.mirror_page
+    qtbot.waitUntil(lambda: "pip install --user av" in page.help.text(), timeout=3000)
+    assert page.session is None and page.popout_button.isEnabled()
+
+
+def test_settings_autostart_toggle(qtbot, backend, settings, theme):
+    from mooring.services.desktop import autostart_enabled
+
+    window = make_window(qtbot, backend, settings, theme)
+    page = window.stack.widget(window.stack.count() - 1)
+    assert not page.autostart.isChecked()
+    page.autostart.setChecked(True)
+    assert autostart_enabled()
+    page.autostart.setChecked(False)
+    assert not autostart_enabled()
+
+
+def test_sidebar_has_icons(qtbot, backend, settings, theme):
+    window = make_window(qtbot, backend, settings, theme)
+    assert all(not window.nav.item(r).icon().isNull() for r in range(window.nav.count()))
+    theme.set_flavor("latte")  # re-tinted, still there
+    assert not window.nav.item(0).icon().isNull()

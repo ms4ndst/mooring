@@ -12,6 +12,7 @@ never package names, app names, serials or command output.
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 import re
 import shutil
@@ -66,13 +67,9 @@ class Tools:
     @property
     def embedded_ready(self) -> bool:
         """Mooring can mirror inside its own window (needs PyAV and the server jar)."""
-        if not (self.adb and self.server and version_number(self.scrcpy_version)):
-            return False
-        try:
-            import av  # noqa: F401
-        except ImportError:
-            return False
-        return True
+        return bool(
+            self.adb and self.server and version_number(self.scrcpy_version) and pyav_available()
+        )
 
     @property
     def ready(self) -> bool:
@@ -112,6 +109,11 @@ def parse_app_list(text: str) -> list[PhoneApp]:
         apps.append(PhoneApp(name.strip() or package, package, stripped[0] == "*"))
     # your own apps first, then alphabetical
     return sorted(apps, key=lambda a: (a.system, a.name.casefold()))
+
+
+def pyav_available() -> bool:
+    """PyAV (optional extra ``mooring[mirror]``) decodes the embedded mirror's video."""
+    return importlib.util.find_spec("av") is not None
 
 
 def version_number(version: str) -> str:

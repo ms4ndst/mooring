@@ -29,9 +29,10 @@ def theme(qapp):
 
 @pytest.fixture(autouse=True)
 def _isolate_user_data(tmp_path, monkeypatch):
-    """Tests must never read real synced contacts or write to the real cache."""
+    """Tests must never read real contacts, or write to the real cache or config."""
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
 
 
 @pytest.fixture(autouse=True)

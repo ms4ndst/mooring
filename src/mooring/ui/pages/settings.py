@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 )
 
 from mooring.backend.base import Device, PhoneBackend
+from mooring.services.desktop import autostart_enabled, set_autostart
 from mooring.services.paths import cache_size, clear_cache
 from mooring.services.settings import SettingsStore
 from mooring.theme.catppuccin import FLAVOR_LABELS
@@ -53,6 +54,9 @@ class SettingsPage(QWidget):
         self.show_text = QCheckBox("Show message text in notifications")
         self.show_text.setChecked(settings.notify_show_text)
         self.show_text.toggled.connect(settings.set_notify_show_text)
+        self.autostart = QCheckBox("Start Mooring when I log in (in the tray)")
+        self.autostart.setChecked(autostart_enabled())
+        self.autostart.toggled.connect(self._on_autostart_toggled)
         self.clipboard_sync = QCheckBox("Sync clipboard automatically (KDE Connect)")
         self.clipboard_sync.toggled.connect(self._on_clipboard_toggled)
         self.cache_label = QLabel()
@@ -72,6 +76,7 @@ class SettingsPage(QWidget):
         form.setSpacing(12)
         form.addRow(QLabel("Active device"), self.device_combo)
         form.addRow(QLabel("Pairing"), pair_row)
+        form.addRow(QLabel("Startup"), self.autostart)
         form.addRow(QLabel("Notifications"), self.show_text)
         form.addRow(QLabel("Clipboard"), self.clipboard_sync)
         cache_row = QHBoxLayout()
@@ -132,6 +137,14 @@ class SettingsPage(QWidget):
         self.clipboard_sync.setChecked(bool(device and device.clipboard_sync))
         self.clipboard_sync.blockSignals(False)
         self.clipboard_sync.setEnabled(known)
+
+    def _on_autostart_toggled(self, enabled: bool) -> None:
+        try:
+            set_autostart(enabled)
+        except OSError:
+            self.autostart.blockSignals(True)
+            self.autostart.setChecked(autostart_enabled())
+            self.autostart.blockSignals(False)
 
     def _on_clipboard_toggled(self, enabled: bool) -> None:
         if device_id := self._settings.active_device:

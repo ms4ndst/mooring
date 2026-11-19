@@ -17,6 +17,11 @@ SETUP_DEVICE = (
     "3. Connect the USB cable and allow this computer on the phone.\n\n"
     "Then press Refresh."
 )
+NEEDS_PYAV = (
+    "Showing the phone inside Mooring needs PyAV (it decodes the video):\n\n"
+    "pip install --user av\n\n"
+    "Then press Refresh. Until then, “Pop out” mirrors in a separate scrcpy window."
+)
 SETUP_UNAUTHORIZED = (
     "The phone hasn't allowed this computer yet.\n\n"
     "Unlock the phone and accept “Allow USB debugging?”, then press Refresh."

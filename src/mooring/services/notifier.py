@@ -24,6 +24,7 @@ from PyQt6.QtCore import QObject
 
 from mooring.backend.base import Message, PhoneBackend
 from mooring.backend.qjeepney import BusClient, DBusClient
+from mooring.resources.icons import APP_ID
 from mooring.services.settings import SettingsStore
 
 log = logging.getLogger(__name__)
@@ -119,7 +120,7 @@ class Notifier(QObject):
             actions += ["inline-reply", "Reply"]
         hints: dict[str, Any] = {
             "category": ("s", "im.received"),
-            "desktop-entry": ("s", "mooring"),
+            "desktop-entry": ("s", APP_ID),
             "x-dunst-stack-tag": ("s", f"mooring-{device_id[:6]}-{msg.thread_id}"),
         }
         key = (device_id, msg.thread_id)
@@ -134,7 +135,7 @@ class Notifier(QObject):
             NOTIFICATIONS,
             "Notify",
             "susssasa{sv}i",
-            ("Mooring", replaces, "mail-message-new", title, body, actions, hints, -1),
+            ("Mooring", replaces, APP_ID, title, body, actions, hints, -1),
             on_reply=posted,
         )
 
