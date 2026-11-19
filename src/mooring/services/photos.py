@@ -36,6 +36,7 @@ class Photo:
 def scan_photos(root: str | Path, limit: int = DEFAULT_LIMIT) -> list[Photo]:
     """Newest-first image files under the standard photo folders of ``root``."""
     root = Path(root)
+    os.listdir(root)  # raises on a dead/missing mount instead of reporting "no photos"
     found: dict[str, Photo] = {}
     for rel in PHOTO_DIRS:
         base = root / rel

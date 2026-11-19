@@ -36,6 +36,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.1.1" date="2026-11-19">
+      <description>
+        <p>Photos and Files recover from a broken connection to the phone's storage, and report errors instead of showing no photos.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-11-19">
       <description>
         <p>First release: messages, notifications, photos, files, clipboard, screen mirroring and phone apps.</p>

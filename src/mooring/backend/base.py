@@ -105,6 +105,8 @@ class PhoneBackend(QObject):
     attachmentReady = pyqtSignal(str, str)
     #: Phone storage is mounted. Args: device id, local path of internal storage.
     storageReady = pyqtSignal(str, str)
+    #: Mounting failed. Args: device id, short reason.
+    storageFailed = pyqtSignal(str, str)
     #: Something failed that the user should hear about. Arg: short message.
     error = pyqtSignal(str)
 

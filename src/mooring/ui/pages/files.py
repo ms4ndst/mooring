@@ -42,6 +42,7 @@ class FilesPage(QWidget):
 
         self.browse_button.clicked.connect(self.browse)
         backend.storageReady.connect(self._on_storage_ready)
+        backend.storageFailed.connect(self._on_storage_failed)
 
     def browse(self) -> None:
         device_id = self._settings.active_device
@@ -49,18 +50,20 @@ class FilesPage(QWidget):
         if device is None or not device.reachable or not device.trusted:
             self.status.setText("Phone not connected")
             return
-        root = self._backend.storage_root(device_id)
-        if root:
-            self._open(root)
-        else:
-            self._want_open = True
-            self.status.setText("Opening phone storage…")
-            self._backend.mount_storage(device_id)
+        # Always ask for the mount: cheap when it's up, and it repairs a dropped mount.
+        self._want_open = True
+        self.status.setText("Opening phone storage…")
+        self._backend.mount_storage(device_id)
 
     def _on_storage_ready(self, device_id: str, root: str) -> None:
         if self._want_open and device_id == self._settings.active_device:
             self._want_open = False
             self._open(root)
+
+    def _on_storage_failed(self, device_id: str, reason: str) -> None:
+        if self._want_open and device_id == self._settings.active_device:
+            self._want_open = False
+            self.status.setText(reason)
 
     def _open(self, root: str) -> None:
         self.status.setText("")

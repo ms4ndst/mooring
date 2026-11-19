@@ -502,3 +502,29 @@ def test_sidebar_has_icons(qtbot, backend, settings, theme):
     assert all(not window.nav.item(r).icon().isNull() for r in range(window.nav.count()))
     theme.set_flavor("latte")  # re-tinted, still there
     assert not window.nav.item(0).icon().isNull()
+
+
+def test_photos_page_reports_storage_failure(qtbot, backend, settings, theme, monkeypatch):
+    window = make_window(qtbot, backend, settings, theme)
+    monkeypatch.setattr(
+        backend,
+        "mount_storage",
+        lambda device_id: backend.storageFailed.emit(
+            device_id, "Couldn't open the phone's storage"
+        ),
+    )
+    window.show_page("Photos")
+    page = window.photos
+    qtbot.waitUntil(lambda: page.status.text() == "Couldn't open the phone's storage", timeout=3000)
+    assert page.refresh_button.isEnabled()  # not stuck "Opening phone storage…"
+
+
+def test_photos_refresh_always_remounts(qtbot, backend, settings, theme):
+    window = make_window(qtbot, backend, settings, theme)
+    page = open_photos(qtbot, window)
+    calls = []
+    original = backend.mount_storage
+    backend.mount_storage = lambda device_id: calls.append(device_id) or original(device_id)
+    page.refresh()
+    qtbot.waitUntil(lambda: not page._busy, timeout=5000)
+    assert calls == [PHONE_ID]

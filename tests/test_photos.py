@@ -79,3 +79,10 @@ def test_clear_cache(qtbot, tmp_path):
     assert cache_size() > 0
     assert clear_cache() == 1
     assert cache_size() == 0 and not cache_root().exists()
+
+
+def test_scan_of_unreadable_root_raises(tmp_path):
+    import pytest
+
+    with pytest.raises(OSError):
+        scan_photos(tmp_path / "gone")  # a dead mount must not look like "no photos"

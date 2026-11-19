@@ -22,6 +22,7 @@ from mooring.backend.base import Attachment, Conversation, Device, Notification,
 from mooring.backend.kdeconnect_notifications import NotificationChannel
 from mooring.backend.kdeconnect_sms import SmsChannel
 from mooring.backend.qjeepney import BusClient, DBusClient
+from mooring.services.sshfs import clear_stale_mount
 
 log = logging.getLogger(__name__)
 
@@ -87,6 +88,8 @@ class KdeConnectBackend(PhoneBackend):
         self._notif = NotificationChannel(self)
         #: device -> local path of the phone's mounted internal storage
         self._storage: dict[str, str] = {}
+        #: Removes a dead sshfs mount at a path; replaced in tests.
+        self.clear_stale_mount: Callable[[str], bool] = clear_stale_mount
 
     # --- lifecycle -----------------------------------------------------------
 
@@ -481,7 +484,7 @@ class KdeConnectBackend(PhoneBackend):
     def storage_root(self, device_id: str) -> str | None:
         return self._storage.get(device_id)
 
-    def mount_storage(self, device_id: str) -> None:
+    def mount_storage(self, device_id: str, _retry: bool = True) -> None:
         if self._bus is None:
             self.error.emit("Not connected to KDE Connect")
             return
@@ -491,6 +494,7 @@ class KdeConnectBackend(PhoneBackend):
         def failed(name: str, _text: str) -> None:
             log.warning("sftp on %s failed: %s", short(device_id), name)
             self.error.emit("Couldn't open the phone's storage")
+            self.storageFailed.emit(device_id, "Couldn't open the phone's storage")
 
         def got_dirs(body: tuple[Any, ...]) -> None:
             dirs: dict[str, Any] = body[0]
@@ -513,13 +517,25 @@ class KdeConnectBackend(PhoneBackend):
             if body[0]:
                 bus.call(sftp, "getDirectories", on_reply=got_dirs, on_error=failed)
                 return
+            self._storage.pop(device_id, None)
+            if _retry:
+                # A dead sshfs mount left on the mount point makes every new mount fail
+                # (seen after the phone changed network / kdeconnectd restarted).
+                bus.call(sftp, "mountPoint", on_reply=maybe_repair, on_error=failed)
+            else:
+                bus.call(sftp, "getMountError", on_reply=reason, on_error=failed)
 
-            def reason(b: tuple[Any, ...]) -> None:
-                log.warning("sftp mount on %s failed", short(device_id))
-                detail = f": {b[0]}" if b and b[0] else ""
-                self.error.emit(f"Couldn't open the phone's storage{detail}")
+        def maybe_repair(b: tuple[Any, ...]) -> None:
+            if b and b[0] and self.clear_stale_mount(str(b[0])):
+                self.mount_storage(device_id, _retry=False)
+            else:
+                bus.call(sftp, "getMountError", on_reply=reason, on_error=failed)
 
-            bus.call(sftp, "getMountError", on_reply=reason, on_error=failed)
+        def reason(b: tuple[Any, ...]) -> None:
+            log.warning("sftp mount on %s failed", short(device_id))
+            detail = f": {b[0]}" if b and b[0] else ""
+            self.error.emit(f"Couldn't open the phone's storage{detail}")
+            self.storageFailed.emit(device_id, f"Couldn't open the phone's storage{detail}")
 
         bus.call(sftp, "mountAndWait", on_reply=mounted, on_error=failed)
 

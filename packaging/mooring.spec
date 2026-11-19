@@ -1,6 +1,6 @@
 Name:           mooring
-Version:        0.1.0
-Release:        2%{?dist}
+Version:        0.1.1
+Release:        1%{?dist}
 Summary:        Your Android phone on the Linux desktop
 
 License:        GPL-3.0-or-later
@@ -63,6 +63,13 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/io.github.ms4ndst.Moo
 %{_datadir}/icons/hicolor/scalable/apps/io.github.ms4ndst.Mooring.svg
 
 %changelog
+* Thu Nov 19 2026 ms4ndst - 0.1.1-1
+- Repair a dead sshfs mount of the phone's storage (left behind after a network
+  change or kdeconnectd restart) and retry, instead of failing to mount
+- Photos/Files re-mount on every refresh; a failed mount or unreadable storage
+  is reported instead of "No photos on the phone yet"
+- Desktop category InstantMessaging instead of Telephony (calls are out of scope)
+
 * Thu Nov 19 2026 ms4ndst - 0.1.0-2
 - Find PyAV installed with `pip install --user av`: the RPM launcher's
   `python3 -s` hides user site-packages, so the Mirror page didn't see it

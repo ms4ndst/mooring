@@ -124,6 +124,7 @@ class PhotosPage(QWidget):
         sel.selectionChanged.connect(self._update_buttons)
         self.model.modelReset.connect(self._update_buttons)
         backend.storageReady.connect(self._on_storage_ready)
+        backend.storageFailed.connect(self._on_storage_failed)
         self.scanner.scanned.connect(self._on_scanned)
         self.scanner.failed.connect(self._on_scan_failed)
         settings.activeDeviceChanged.connect(self._on_device_changed)
@@ -151,16 +152,18 @@ class PhotosPage(QWidget):
         self._busy = True
         self.refresh_button.setEnabled(False)
         self.thumbs.forget_failures()
-        root = self._backend.storage_root(device_id)
-        if root is None:
-            self.status.setText("Opening phone storage…")
-            self._backend.mount_storage(device_id)
-        else:
-            self._scan(device_id, root)
+        # Always ask for the mount: cheap when it's up, and it repairs a dropped mount.
+        self.status.setText("Opening phone storage…")
+        self._backend.mount_storage(device_id)
 
     def _on_storage_ready(self, device_id: str, root: str) -> None:
         if device_id == self._settings.active_device and self._busy:
             self._scan(device_id, root)
+
+    def _on_storage_failed(self, device_id: str, reason: str) -> None:
+        if device_id == self._settings.active_device and self._busy:
+            self._done()
+            self.status.setText(reason)
 
     def _scan(self, device_id: str, root: str) -> None:
         self.status.setText("Looking for photos…")

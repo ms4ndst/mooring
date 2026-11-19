@@ -250,10 +250,42 @@ def test_mount_storage_picks_internal_storage(qtbot, backend, bus):
 
 def test_mount_failure_reports_daemon_reason(qtbot, backend, bus):
     bus.methods[(SFTP, P.SFTP_IFACE, "mountAndWait")] = lambda: (False,)
+    bus.methods[(SFTP, P.SFTP_IFACE, "mountPoint")] = lambda: (f"/run/user/1000/{PHONE}",)
     bus.methods[(SFTP, P.SFTP_IFACE, "getMountError")] = lambda: ("sshfs not found",)
-    with qtbot.waitSignal(backend.error) as blocker:
+    backend.clear_stale_mount = lambda path: False  # nothing stale to repair
+    with qtbot.waitSignal(backend.storageFailed) as failed:
         backend.mount_storage(PHONE)
-    assert "sshfs not found" in blocker.args[0]
+    assert "sshfs not found" in failed.args[1]
+    assert backend.storage_root(PHONE) is None
+
+
+def test_dead_mount_is_repaired_and_mount_retried(qtbot, backend, bus):
+    attempts = []
+
+    def mount_and_wait():
+        attempts.append(1)
+        return (len(attempts) > 1,)  # fails until the dead mount is gone
+
+    cleared = []
+    bus.methods[(SFTP, P.SFTP_IFACE, "mountAndWait")] = mount_and_wait
+    bus.methods[(SFTP, P.SFTP_IFACE, "mountPoint")] = lambda: (f"/run/user/1000/{PHONE}",)
+    bus.methods[(SFTP, P.SFTP_IFACE, "getDirectories")] = lambda: ({ROOT: ("s", "Internal")},)
+    backend.clear_stale_mount = lambda path: cleared.append(path) or True
+    with qtbot.waitSignal(backend.storageReady) as ready:
+        backend.mount_storage(PHONE)
+    assert ready.args == [PHONE, ROOT]
+    assert cleared == [f"/run/user/1000/{PHONE}"] and len(attempts) == 2
+
+
+def test_repair_is_tried_only_once(qtbot, backend, bus):
+    attempts = []
+    bus.methods[(SFTP, P.SFTP_IFACE, "mountAndWait")] = lambda: attempts.append(1) or (False,)
+    bus.methods[(SFTP, P.SFTP_IFACE, "mountPoint")] = lambda: ("/run/user/1000/x",)
+    bus.methods[(SFTP, P.SFTP_IFACE, "getMountError")] = lambda: ("still broken",)
+    backend.clear_stale_mount = lambda path: True  # "repairs" but it keeps failing
+    with qtbot.waitSignal(backend.storageFailed):
+        backend.mount_storage(PHONE)
+    assert len(attempts) == 2  # original + one retry, no loop
 
 
 def test_clipboard_sync_state_and_toggle(backend, bus):
