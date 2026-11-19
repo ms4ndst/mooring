@@ -63,6 +63,11 @@ its battery use to "Unrestricted". For mirroring and phone apps, turn on USB (or
 Wireless) debugging in the phone's developer options. Settings → "Start Mooring when I
 log in" starts it in the tray.
 
+**Two popups for every SMS?** Mooring posts its own popup for new messages (Open/Reply
+jump to the conversation), and KDE Connect also forwards the phone's SMS-app
+notification. To keep only Mooring's: in the KDE Connect app on the phone, open the
+laptop's device page → Plugin settings → Notification sync, and untick your SMS app.
+
 ## Run from a checkout
 
 ```bash
