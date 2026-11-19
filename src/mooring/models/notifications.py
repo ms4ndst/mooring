@@ -35,9 +35,19 @@ class NotificationListModel(QAbstractListModel):
     def _on_posted(self, device_id: str, notification: Notification) -> None:
         if device_id != self._device_id:
             return
-        self._on_removed(device_id, notification.id)  # replace if updated
-        self.beginInsertRows(QModelIndex(), 0, 0)
-        self._items.insert(0, notification)
+        row = next((i for i, n in enumerate(self._items) if n.id == notification.id), -1)
+        if row >= 0:  # updated: replace in place, keep its position
+            self._items[row] = notification
+            idx = self.index(row)
+            self.dataChanged.emit(idx, idx)
+            return
+        # newest first
+        row = next(
+            (i for i, n in enumerate(self._items) if n.timestamp < notification.timestamp),
+            len(self._items),
+        )
+        self.beginInsertRows(QModelIndex(), row, row)
+        self._items.insert(row, notification)
         self.endInsertRows()
 
     def _on_removed(self, device_id: str, notification_id: str) -> None:

@@ -1,7 +1,7 @@
 """PhoneBackend on top of kdeconnectd's D-Bus API (via jeepney, see qjeepney.py).
 
 Devices, pairing, reachability, links, battery, ring, clipboard, share (Phase 2) and
-SMS via SmsChannel (Phase 3, kdeconnect_sms.py). Phone notifications: not yet.
+SMS via SmsChannel (kdeconnect_sms.py), phone notifications via NotificationChannel.
 
 Privacy: log device IDs (shortened) and counts only. Device names are user-chosen
 and may contain a person's name, so they're never logged.
@@ -19,6 +19,7 @@ from PyQt6.QtCore import QObject, QTimer
 
 from mooring.backend import dbus_paths as P
 from mooring.backend.base import Attachment, Conversation, Device, Notification, PhoneBackend
+from mooring.backend.kdeconnect_notifications import NotificationChannel
 from mooring.backend.kdeconnect_sms import SmsChannel
 from mooring.backend.qjeepney import BusClient, DBusClient
 
@@ -83,6 +84,7 @@ class KdeConnectBackend(PhoneBackend):
         self._reload_timer.setInterval(150)  # coalesce bursts of daemon signals
         self._reload_timer.timeout.connect(self.reload_devices)
         self._sms = SmsChannel(self)
+        self._notif = NotificationChannel(self)
         #: device -> local path of the phone's mounted internal storage
         self._storage: dict[str, str] = {}
 
@@ -123,6 +125,23 @@ class KdeConnectBackend(PhoneBackend):
                 path_namespace=P.DEVICES_NAMESPACE,
             ),
             self._from_daemon(self._on_conversation_signal),
+        )
+        bus.subscribe(
+            MatchRule(
+                type="signal",
+                interface=P.NOTIFICATIONS_IFACE,
+                path_namespace=P.DEVICES_NAMESPACE,
+            ),
+            self._from_daemon(self._on_notifications_signal),
+        )
+        bus.subscribe(
+            MatchRule(
+                type="signal",
+                interface=P.NOTIFICATION_IFACE,
+                member="ready",
+                path_namespace=P.DEVICES_NAMESPACE,
+            ),
+            self._from_daemon(self._on_notification_item_signal),
         )
         owner_rule = MatchRule(
             type="signal",
@@ -197,6 +216,7 @@ class KdeConnectBackend(PhoneBackend):
                         self._fetch_battery(d.id)
                         self._fetch_clipboard_state(d.id)
                         self._sms.device_ready(d.id)
+                        self._notif.device_ready(d.id)
 
         for device_id in ids:
             self._fetch_device(device_id, fresh, done)
@@ -256,9 +276,11 @@ class KdeConnectBackend(PhoneBackend):
             self._update(device.id, reachable=reachable)
             if not reachable:
                 self._storage.pop(device.id, None)  # the sshfs mount dies with the link
+                self._notif.forget_device(device.id)  # the plugin unloads with the link
             if reachable and device.trusted:
                 self._fetch_battery(device.id)
                 self._sms.device_ready(device.id)
+                self._notif.device_ready(device.id)
         elif member == "pairStateChanged":
             paired = int(body[0]) == P.PairState.PAIRED
             log.info("device %s pair state %d", short(device.id), int(body[0]))
@@ -267,8 +289,10 @@ class KdeConnectBackend(PhoneBackend):
                 self.devicesChanged.emit()  # pairing changes which devices are usable
                 if not paired:
                     self._sms.forget_device(device.id)
+                    self._notif.forget_device(device.id)
                 elif device.reachable:
                     self._sms.device_ready(device.id)
+                    self._notif.device_ready(device.id)
         elif member == "pluginsChanged":
             self._fetch_clipboard_state(device.id)
         elif member == "nameChanged":
@@ -290,6 +314,16 @@ class KdeConnectBackend(PhoneBackend):
         if device_id in self._devices:
             self._sms.on_signal(msg, _member(msg), device_id)
 
+    def _on_notifications_signal(self, msg: Message) -> None:
+        device_id = P.device_id_from_path(_path(msg))
+        if device_id in self._devices:
+            self._notif.on_list_signal(msg, _member(msg), device_id)
+
+    def _on_notification_item_signal(self, msg: Message) -> None:
+        device_id = P.device_id_from_path(_path(msg))
+        if device_id in self._devices:
+            self._notif.on_item_signal(msg, _member(msg), device_id, _path(msg))
+
     def _on_owner_changed(self, msg: Message) -> None:
         _name, _old, new = msg.body
         self._owner = new or None
@@ -300,6 +334,8 @@ class KdeConnectBackend(PhoneBackend):
         else:
             log.warning("kdeconnectd went away")
             self._set_all_unreachable()
+            for device_id in list(self._devices):
+                self._notif.forget_device(device_id)
 
     def _on_bus_lost(self) -> None:
         self._set_all_unreachable()
@@ -513,10 +549,13 @@ class KdeConnectBackend(PhoneBackend):
             on_error=lambda name, _t: self.error.emit("Couldn't change clipboard sync"),
         )
 
-    # --- phone notifications (not yet) ---------------------------------------
+    # --- phone notifications -------------------------------------------------
 
     def notifications(self, device_id: str) -> list[Notification]:
-        return []
+        return self._notif.notifications(device_id)
 
     def dismiss_notification(self, device_id: str, notification_id: str) -> None:
-        log.debug("dismiss_notification: phone notifications are not implemented yet")
+        self._notif.dismiss(device_id, notification_id)
+
+    def reply_notification(self, device_id: str, notification_id: str, text: str) -> None:
+        self._notif.reply(device_id, notification_id, text)

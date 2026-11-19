@@ -364,3 +364,25 @@ def test_pair_dialog_validation(qtbot):
     assert d.result_value() == ("192.168.1.20:37099", "123456", "")
     d.connect_address.setText("not an address")
     assert d.result_value() is None
+
+
+def test_notifications_reply_and_clear_all(qtbot, backend, settings, theme):
+    window = make_window(qtbot, backend, settings, theme)
+    window.show_page("Notifications")
+    page = window.notifications
+    rows = {page.model.notification(r).id: r for r in range(page.model.rowCount())}
+
+    page.view.setCurrentIndex(page.model.index(rows["n1"]))  # not repliable
+    assert not page.reply_row.isVisibleTo(page)
+    page.view.setCurrentIndex(page.model.index(rows["n2"]))  # chat: repliable
+    assert page.reply_row.isVisibleTo(page)
+    assert not page.reply_send.isEnabled()
+    page.reply_edit.setText("Sure!")
+    page.reply_send.click()
+    assert backend.notification_replies == [(PHONE_ID, "n2", "Sure!")]
+    assert page.reply_edit.text() == ""
+
+    page.clear_all.click()
+    assert page.model.rowCount() == 0
+    assert page.empty.isVisibleTo(page) and "Notification sync" in page.empty.text()
+    assert not page.clear_all.isEnabled()

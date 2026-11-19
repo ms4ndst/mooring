@@ -79,3 +79,22 @@ def test_notifications_post_and_dismiss(backend):
     assert model.notification(0).id == "x"
     backend.dismiss_notification(PHONE_ID, "x")
     assert model.rowCount() == count
+
+
+def test_notification_updates_keep_position_and_new_ones_sort_by_time(backend):
+    from dataclasses import replace
+    from datetime import datetime, timedelta
+
+    from mooring.backend.base import Notification
+
+    model = NotificationListModel(backend)
+    model.set_device(PHONE_ID)
+    ids = [model.notification(r).id for r in range(model.rowCount())]
+    second = model.notification(1)
+    backend.post_notification(PHONE_ID, replace(second, text="edited"))
+    assert [model.notification(r).id for r in range(model.rowCount())] == ids
+    assert model.notification(1).text == "edited"
+
+    older = Notification("old", "App", "T", "x", datetime.now() - timedelta(days=1))
+    backend.post_notification(PHONE_ID, older)
+    assert model.notification(model.rowCount() - 1).id == "old"

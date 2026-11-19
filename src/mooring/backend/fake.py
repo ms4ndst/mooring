@@ -149,6 +149,7 @@ class FakeBackend(PhoneBackend):
         self._notifications: dict[str, list[Notification]] = {PHONE_ID: [], TABLET_ID: []}
         self._generate(messages_per_thread)
         self._storage: dict[str, str] = {}
+        self.notification_replies: list[tuple[str, str, str]] = []
         self.photo_count = photo_count
         self._storage_parent = storage_parent
         self.mount_delay_ms = 0
@@ -328,6 +329,10 @@ class FakeBackend(PhoneBackend):
         items = self._notifications.get(device_id, [])
         self._notifications[device_id] = [n for n in items if n.id != notification_id]
         self.notificationRemoved.emit(device_id, notification_id)
+
+    def reply_notification(self, device_id: str, notification_id: str, text: str) -> None:
+        log.info("fake: replied to notification %s", notification_id)
+        self.notification_replies.append((device_id, notification_id, text))
 
     def post_notification(self, device_id: str, notification: Notification) -> None:
         """Test hook: simulate the phone posting a notification."""

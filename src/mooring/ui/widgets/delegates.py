@@ -5,7 +5,17 @@ from __future__ import annotations
 from datetime import datetime
 
 from PyQt6.QtCore import QModelIndex, QPersistentModelIndex, QRect, QRectF, QSize, Qt
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QPainterPath, QPen, QPixmap
+from PyQt6.QtGui import (
+    QColor,
+    QFont,
+    QFontMetrics,
+    QImage,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QPixmapCache,
+)
 from PyQt6.QtWidgets import QListView, QStyle, QStyledItemDelegate, QStyleOptionViewItem
 
 from mooring.backend.base import Message
@@ -258,6 +268,8 @@ class NotificationDelegate(QStyledItemDelegate):
             painter.drawRoundedRect(r, 10, 10)
 
         left, right, top = int(r.left()) + 14, int(r.right()) - 14, int(r.top()) + 8
+        self._paint_icon(painter, QRectF(left, r.center().y() - 16, 32, 32), index)
+        left += 46
         width = right - left
 
         small = _scaled(option.font, 0.85, bold=True)
@@ -296,6 +308,34 @@ class NotificationDelegate(QStyledItemDelegate):
             ),
         )
         painter.restore()
+
+    def _paint_icon(self, painter: QPainter, rect: QRectF, index: _Index) -> None:
+        """The app icon kdeconnectd downloaded, else a coloured circle with the initial."""
+        n = index.data(Role.Item)
+        icon_path = getattr(n, "icon_path", "")
+        pix: QPixmap | None = None
+        if icon_path:
+            key = f"notif-icon:{icon_path}"
+            pix = QPixmapCache.find(key)
+            if pix is None:
+                pix = QPixmap(icon_path)
+                if not pix.isNull():
+                    QPixmapCache.insert(key, pix)
+        if pix is not None and not pix.isNull():
+            clip = QPainterPath()
+            clip.addRoundedRect(rect, 8, 8)
+            painter.save()
+            painter.setClipPath(clip)
+            painter.drawPixmap(rect.toRect(), pix)
+            painter.restore()
+            return
+        app = str(index.data(Role.AppName) or "?")
+        color = AVATAR_COLORS[sum(map(ord, app)) % len(AVATAR_COLORS)]
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self._theme.color(color))
+        painter.drawEllipse(rect)
+        painter.setPen(self._theme.color("crust"))
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, app[:1].upper())
 
 
 class PhotoDelegate(QStyledItemDelegate):

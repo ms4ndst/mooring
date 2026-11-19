@@ -75,6 +75,8 @@ class Notification:
     timestamp: datetime
     dismissable: bool = True
     repliable: bool = False
+    #: Local path of the app icon kdeconnectd downloaded ("" = none yet).
+    icon_path: str = ""
 
 
 class PhoneBackend(QObject):
@@ -157,6 +159,10 @@ class PhoneBackend(QObject):
         raise NotImplementedError
 
     def dismiss_notification(self, device_id: str, notification_id: str) -> None:
+        raise NotImplementedError
+
+    def reply_notification(self, device_id: str, notification_id: str, text: str) -> None:
+        """Answer a chat notification (only when ``Notification.repliable``)."""
         raise NotImplementedError
 
     # --- sharing -------------------------------------------------------------
