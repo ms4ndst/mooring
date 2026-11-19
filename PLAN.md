@@ -5,7 +5,7 @@ screen mirroring for an Android phone, all in one window.
 
 - **Target:** Fedora (Niri compositor, Wayland)
 - **Stack:** Python 3.12+ and PyQt6, Catppuccin theming
-- **Status:** v0.1.0. Phases 0–5 and 7 are done; Phase 6 (calls) was researched and shelved.
+- **Status:** v0.1.0. All phases done and tested live. Calls are out of scope.
 
 This file started as the build plan. It now records what was built and where reality
 differed from the plan, so the reasoning isn't lost.
@@ -73,7 +73,7 @@ mooring/
 ├─ PLAN.md, README.md, LICENSE (GPL-3.0-or-later)
 ├─ data/                    # .desktop + AppStream metainfo (io.github.ms4ndst.Mooring)
 ├─ packaging/mooring.spec   # RPM; scripts/build-rpm.sh builds it
-├─ docs/                    # dbus-introspection.txt (verified API), phase6-calls.md
+├─ docs/                    # dbus-introspection.txt (verified API), screenshots/
 ├─ spikes/                  # Phase 0 and mirroring spikes (print counts/types only)
 ├─ src/mooring/
 │  ├─ app.py                # QApplication, tray, single instance, CLI flags
@@ -98,7 +98,6 @@ mooring/
 | 4 Photos/files/clipboard | sftp mount, photo grid, send files | Done. Photo folders are scanned broadly (phones disagree on names). |
 | 5 Mirroring & apps | scrcpy window, apps in own windows | Done, and extended: a **Mirror** page shows the phone inside Mooring (own scrcpy-protocol client, PyAV); **Pop out** and single apps use scrcpy windows. |
 | – Notifications page | (not in the plan) | Done: list, dismiss, reply to chat notifications. |
-| 6 Calls | Research spike first | **Shelved.** Call control works (PipeWire `org.pipewire.Telephony`), call audio doesn't on the test laptop. See `docs/phase6-calls.md`. |
 | 7 Packaging | Desktop file, metainfo, RPM | Done: app ID, icons, start at login, RPM. Flatpak deferred (scrcpy/adb would need host access). |
 
 ---
@@ -126,8 +125,11 @@ mooring/
 
 ## 7. Open items
 
-- Live-test checklist: SMS notification popup, MMS, long-thread paging, Save to Pictures,
-  drop-to-send, clipboard, notification reply/dismiss, single apps, mirror typing/scrolling.
+Everything above has been tested live against a real phone. Possible additions, only if
+they turn out to be missed in daily use:
+
 - Mirror: phone audio, Ctrl+C/V passthrough, multi-touch.
-- HEIC thumbnails, sending MMS, group messages, notification action buttons.
-- Flatpak.
+- Messages: sending pictures (MMS), new group conversations.
+- Notification action buttons; HEIC thumbnails; Flatpak.
+
+Out of scope: phone calls (not needed; the phone is always at hand).

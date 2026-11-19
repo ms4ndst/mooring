@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint, types, tests
+    runs-on: ubuntu-latest
+    container: fedora:44  # the target distro: same system libraries as users have
+    steps:
+      - name: System packages
+        run: >
+          dnf install -y --setopt=install_weak_deps=False
+          python3 python3-pip git
+          mesa-libEGL mesa-libGL libxkbcommon fontconfig dbus-libs glib2
+          desktop-file-utils appstream
+      - uses: actions/checkout@v4
+      - name: Python environment
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet -e ".[dev]"
+      - name: Lint
+        run: |
+          .venv/bin/ruff check src tests spikes scripts
+          .venv/bin/ruff format --check src tests spikes scripts
+      - name: Types
+        run: .venv/bin/mypy
+      - name: Tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: .venv/bin/pytest -q
+
+  rpm:
+    name: Build RPM and attach to the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: check
+    runs-on: ubuntu-latest
+    container: fedora:44
+    permissions:
+      contents: write  # upload release assets
+    steps:
+      - name: Build tools
+        run: >
+          dnf install -y --setopt=install_weak_deps=False
+          git rpm-build pyproject-rpm-macros python3-devel python3-setuptools python3-pip
+          desktop-file-utils appstream
+          python3-pyqt6 python3-pillow python3-jeepney
+          gh
+      - uses: actions/checkout@v4
+      - name: Tag matches the version in pyproject.toml and the spec
+        run: |
+          py=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
+          spec=$(sed -n 's/^Version: *//p' packaging/mooring.spec)
+          if [ "v$py" != "$GITHUB_REF_NAME" ] || [ "$py" != "$spec" ]; then
+            echo "::error::tag $GITHUB_REF_NAME, pyproject.toml $py and mooring.spec $spec must match"
+            exit 1
+          fi
+      - name: Build
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          ./scripts/build-rpm.sh
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "Mooring ${tag#v}" --generate-notes
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber \
+            build/rpm/RPMS/noarch/*.rpm build/rpm/SRPMS/*.rpm

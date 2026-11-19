@@ -1,5 +1,7 @@
 # Mooring
 
+[![CI](https://github.com/ms4ndst/mooring/actions/workflows/ci.yml/badge.svg)](https://github.com/ms4ndst/mooring/actions/workflows/ci.yml)
+
 A Phone Link–style hub for Linux: messages, notifications, photos, files, clipboard and
 screen mirroring for an Android phone, in one window. Built with PyQt6 and themed with
 Catppuccin. Developed on Fedora + Niri (Wayland).
@@ -31,9 +33,6 @@ backend), so no real messages, contacts, photos or phone screens appear.
   drag out; drop files on the window to send them; clipboard push and sync toggle.
 - Phase 5 mirroring & apps: mirror the screen or open one phone app in its own window
   (scrcpy 3.0+, Niri opens each as a column); USB or Wi-Fi (wireless debugging) pairing.
-- Phase 6 calls: researched, not pursued. Call control works over Bluetooth HFP, but
-  call audio doesn't on the test laptop; see docs/phase6-calls.md. KDE Connect's own
-  desktop notifications cover incoming calls.
 
 Mirroring needs developer options on the phone: USB debugging (or Wireless debugging)
 and `sudo dnf install android-tools scrcpy`.

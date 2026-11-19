@@ -22,7 +22,7 @@ Comment=Messages, notifications, photos, files and screen mirroring for your And
 Exec={exec}
 Icon={app_id}
 Terminal=false
-Categories=Network;Telephony;
+Categories=Network;InstantMessaging;
 StartupNotify=true
 SingleMainWindow=true
 """

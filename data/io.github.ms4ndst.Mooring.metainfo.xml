@@ -25,7 +25,7 @@
   <url type="bugtracker">https://github.com/ms4ndst/mooring/issues</url>
   <categories>
     <category>Network</category>
-    <category>Telephony</category>
+    <category>InstantMessaging</category>
   </categories>
   <requires>
     <display_length compare="ge">768</display_length>
