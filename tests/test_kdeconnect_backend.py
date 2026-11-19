@@ -229,3 +229,46 @@ def test_links_are_tracked(backend, bus):
         sender="org.freedesktop.DBus",
     )
     assert backend.device(PHONE).links == ()
+
+
+SFTP = P.plugin_path(PHONE, P.SFTP_SUFFIX)
+ROOT = f"/run/user/1000/{PHONE}/storage/emulated/0"
+
+
+def test_mount_storage_picks_internal_storage(qtbot, backend, bus):
+    bus.methods[(SFTP, P.SFTP_IFACE, "mountAndWait")] = lambda: (True,)
+    bus.methods[(SFTP, P.SFTP_IFACE, "getDirectories")] = lambda: (
+        {"/run/sd": ("s", "SD card"), ROOT: ("s", "Internal shared storage")},
+    )
+    with qtbot.waitSignal(backend.storageReady) as blocker:
+        backend.mount_storage(PHONE)
+    assert blocker.args == [PHONE, ROOT]
+    assert backend.storage_root(PHONE) == ROOT
+    bus.emit(P.device_path(PHONE), P.DEVICE_IFACE, "reachableChanged", "b", (False,))
+    assert backend.storage_root(PHONE) is None  # mount gone with the link
+
+
+def test_mount_failure_reports_daemon_reason(qtbot, backend, bus):
+    bus.methods[(SFTP, P.SFTP_IFACE, "mountAndWait")] = lambda: (False,)
+    bus.methods[(SFTP, P.SFTP_IFACE, "getMountError")] = lambda: ("sshfs not found",)
+    with qtbot.waitSignal(backend.error) as blocker:
+        backend.mount_storage(PHONE)
+    assert "sshfs not found" in blocker.args[0]
+
+
+def test_clipboard_sync_state_and_toggle(backend, bus):
+    state = {"on": True}
+    dev = (P.device_path(PHONE), P.DEVICE_IFACE)
+    bus.methods[(*dev, "isPluginEnabled")] = lambda name: (state["on"],)
+
+    def set_enabled(name, on):
+        assert name == P.CLIPBOARD_PLUGIN
+        state["on"] = on
+        return ()
+
+    bus.methods[(*dev, "setPluginEnabled")] = set_enabled
+    backend.reload_devices()
+    assert backend.device(PHONE).clipboard_sync is True
+    backend.set_clipboard_sync(PHONE, False)
+    assert backend.device(PHONE).clipboard_sync is False
+    assert bus.called("setPluginEnabled")[0][4] == "sb"

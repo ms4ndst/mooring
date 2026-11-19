@@ -29,6 +29,7 @@ packages = ["src/mooring"]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
 qt_api = "pyqt6"
+faulthandler_timeout = 60  # dump stacks if a test hangs (e.g. thread-pool deadlocks)
 
 [tool.ruff]
 line-length = 100

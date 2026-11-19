@@ -169,3 +169,111 @@ def test_picture_message_bubble_and_download(qtbot, backend, settings, theme, mo
     page.msg_view.clicked.emit(page.messages.index(pic_row))
     qtbot.waitUntil(lambda: len(opened) > 0)
     assert opened[0].toLocalFile().endswith("mooring-fake-fake-sunset.png")
+
+
+def open_photos(qtbot, window):
+    """Show Photos and wait for the list. Callers keep ``window`` referenced, like the app."""
+    window.show_page("Photos")
+    qtbot.waitUntil(lambda: window.photos.model.rowCount() > 0, timeout=10000)
+    return window.photos
+
+
+def test_photos_page_lists_newest_first(qtbot, backend, settings, theme):
+    window = make_window(qtbot, backend, settings, theme)
+    page = open_photos(qtbot, window)
+    assert page.model.rowCount() == 24
+    mtimes = [page.model.photo(r).mtime for r in range(24)]
+    assert mtimes == sorted(mtimes, reverse=True)
+    assert all(".thumbnails" not in page.model.photo(r).path for r in range(24))
+    qtbot.waitUntil(page.thumbs.idle, timeout=10000)
+    assert page.status.text() == "24 newest"
+
+
+def test_new_photo_appears_after_refresh(qtbot, backend, settings, theme):
+    import os
+    import time
+
+    window = make_window(qtbot, backend, settings, theme)
+    page = open_photos(qtbot, window)
+    path = backend.add_photo(PHONE_ID, "IMG_just_taken.jpg")
+    os.utime(path, (time.time() + 60, time.time() + 60))
+    page.refresh()
+    qtbot.waitUntil(lambda: page.model.photo(0).name == "IMG_just_taken.jpg", timeout=5000)
+
+
+def test_save_to_pictures(qtbot, backend, settings, theme, tmp_path):
+    window = make_window(qtbot, backend, settings, theme)
+    page = open_photos(qtbot, window)
+    target = tmp_path / "Pictures"
+    page.save_dir = lambda: target
+    page.view.selectAll()
+    page.save_button.click()
+    qtbot.waitUntil(lambda: page.status.text().startswith("Saved"), timeout=10000)
+    assert len(list(target.iterdir())) == 24
+    page.view.clearSelection()
+    page.view.setCurrentIndex(page.model.index(0))
+    page.save_button.click()  # same name again -> "(1)" copy, never overwrite
+    qtbot.waitUntil(lambda: len(list(target.iterdir())) == 25, timeout=5000)
+
+
+def test_photo_drag_carries_local_file_urls(qtbot, backend, settings, theme):
+    window = make_window(qtbot, backend, settings, theme)
+    page = open_photos(qtbot, window)
+    mime = page.model.mimeData([page.model.index(0), page.model.index(1)])
+    assert [u.toLocalFile() for u in mime.urls()] == [
+        page.model.photo(0).path,
+        page.model.photo(1).path,
+    ]
+
+
+def test_dropped_files_are_sent_but_not_the_phones_own(qtbot, backend, settings, theme, tmp_path):
+    from PyQt6.QtCore import QUrl
+
+    window = make_window(qtbot, backend, settings, theme)
+    open_photos(qtbot, window)
+    mine = tmp_path / "report.pdf"
+    mine.write_bytes(b"%PDF")
+    phone_photo = QUrl.fromLocalFile(window.photos.model.photo(0).path)
+    urls = [
+        QUrl.fromLocalFile(str(mine)),
+        phone_photo,
+        QUrl("https://example.com/x"),
+        QUrl.fromLocalFile(str(tmp_path)),
+    ]  # a folder
+    assert [u.toLocalFile() for u in window.files_to_send(urls)] == [str(mine)]
+
+
+def test_clipboard_button_and_sync_toggle(qtbot, backend, settings, theme):
+    window = make_window(qtbot, backend, settings, theme)
+    sent = []
+    backend.send_clipboard = lambda d: sent.append(d)
+    window.device_header.clipboard.click()
+    assert sent == [PHONE_ID]
+
+    page = window.stack.widget(window.stack.count() - 1)
+    assert page.clipboard_sync.isChecked()
+    page.clipboard_sync.setChecked(False)
+    assert backend.device(PHONE_ID).clipboard_sync is False
+    assert not window.device_header.clipboard.isEnabled()
+
+
+def test_dropping_window_during_thumbnail_generation_does_not_hang(qtbot, backend, settings, theme):
+    """Regression: a per-object QThreadPool, destroyed by Python's GC (GIL held) while
+    Pillow threads still needed the GIL, deadlocked. qtbot only holds a weak ref."""
+    import gc
+
+    from PyQt6.QtCore import QThreadPool
+
+    page = open_photos(qtbot, make_window(qtbot, backend, settings, theme))
+    assert not page.thumbs.idle()  # thumbnails still being made
+    del page
+    gc.collect()  # frees the window (and its children) with the GIL held
+    assert QThreadPool.globalInstance().waitForDone(10000)
+
+
+def test_human_size():
+    from mooring.ui.pages.settings import human_size
+
+    assert human_size(512) == "512 bytes"
+    assert human_size(300 * 1024) == "300.0 KB"
+    assert human_size(5 * 1024 * 1024) == "5.0 MB"

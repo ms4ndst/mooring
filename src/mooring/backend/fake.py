@@ -9,6 +9,7 @@ import logging
 import random
 from dataclasses import replace
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from PyQt6.QtCore import QObject, QTimer
 
@@ -80,12 +81,54 @@ def _fake_png(width: int = 320, height: int = 200) -> bytes:
     return bytes(data.data())
 
 
+def _fake_jpeg(path: Path, seed: int, size: tuple[int, int] = (800, 600)) -> None:
+    from PIL import Image, ImageDraw
+
+    rng = random.Random(seed)
+    palette = ["#f5a97f", "#c6a0f6", "#8aadf4", "#a6da95", "#eed49f", "#f5bde6", "#8bd5ca"]
+    a, b = rng.sample(palette, 2)
+    img = Image.new("RGB", size, a)
+    draw = ImageDraw.Draw(img)
+    w, h = size
+    draw.rectangle((0, int(h * rng.uniform(0.4, 0.7)), w, h), fill=b)
+    r = rng.randint(40, 120)
+    cx, cy = rng.randint(r, w - r), rng.randint(r, h // 2)
+    draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill="#f4dbd6")
+    img.save(path, "JPEG", quality=80)
+
+
+def _fake_storage(count: int, parent: str | None = None) -> str:
+    """A throwaway 'phone storage' tree with synthetic pictures, like sshfs would show."""
+    import os
+    import tempfile
+    import time
+
+    base = Path(tempfile.mkdtemp(prefix="mooring-fake-phone-", dir=parent))
+    root = base / "storage" / "emulated" / "0"
+    camera, shots = root / "DCIM" / "Camera", root / "Pictures" / "Screenshots"
+    hidden = root / "Pictures" / ".thumbnails"
+    for d in (camera, shots, hidden, root / "Download"):
+        d.mkdir(parents=True)
+    now = time.time()
+    for i in range(count):
+        folder = shots if i % 5 == 4 else camera
+        prefix = "Screenshot_" if folder is shots else "IMG_"
+        path = folder / f"{prefix}{20260101 + i}.jpg"
+        _fake_jpeg(path, seed=i)
+        t = now - i * 3600
+        os.utime(path, (t, t))
+    (hidden / "should_be_skipped.jpg").write_bytes(b"not an image")
+    return str(root)
+
+
 class FakeBackend(PhoneBackend):
     def __init__(
         self,
         *,
         auto_reply_ms: int | None = 1500,
         messages_per_thread: int = 120,
+        photo_count: int = 24,
+        storage_parent: str | None = None,
         seed: int = 7,
         parent: QObject | None = None,
     ) -> None:
@@ -94,7 +137,9 @@ class FakeBackend(PhoneBackend):
         self._rng = random.Random(seed)
         self._next_id = 1
         self._devices: dict[str, Device] = {
-            PHONE_ID: Device(PHONE_ID, "Pixel (fake)", "phone", True, True, 82, False, ("Wi-Fi",)),
+            PHONE_ID: Device(
+                PHONE_ID, "Pixel (fake)", "phone", True, True, 82, False, ("Wi-Fi",), True
+            ),
             TABLET_ID: Device(TABLET_ID, "Tablet (fake)", "tablet", False, True, None, False),
         }
         # device id -> thread id -> messages, oldest first
@@ -103,6 +148,10 @@ class FakeBackend(PhoneBackend):
         self._unread: set[int] = set()
         self._notifications: dict[str, list[Notification]] = {PHONE_ID: [], TABLET_ID: []}
         self._generate(messages_per_thread)
+        self._storage: dict[str, str] = {}
+        self.photo_count = photo_count
+        self._storage_parent = storage_parent
+        self.mount_delay_ms = 0
 
     # --- data generation -----------------------------------------------------
 
@@ -292,6 +341,32 @@ class FakeBackend(PhoneBackend):
 
     def share_url(self, device_id: str, url: str) -> None:
         log.info("fake: shared one url to %s", device_id)
+
+    # --- storage -------------------------------------------------------------
+
+    def storage_root(self, device_id: str) -> str | None:
+        return self._storage.get(device_id)
+
+    def mount_storage(self, device_id: str) -> None:
+        if device_id not in self._storage:
+            self._storage[device_id] = _fake_storage(self.photo_count, self._storage_parent)
+        root = self._storage[device_id]
+        QTimer.singleShot(self.mount_delay_ms, lambda: self.storageReady.emit(device_id, root))
+
+    def add_photo(self, device_id: str, name: str = "IMG_new.jpg") -> str:
+        """Test hook: 'take a photo' on the fake phone."""
+        root = Path(self._storage[device_id])
+        path = root / "DCIM" / "Camera" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _fake_jpeg(path, seed=len(name))
+        return str(path)
+
+    # --- clipboard -----------------------------------------------------------
+
+    def set_clipboard_sync(self, device_id: str, enabled: bool) -> None:
+        if device_id in self._devices:
+            self._devices[device_id] = replace(self._devices[device_id], clipboard_sync=enabled)
+            self.deviceChanged.emit(device_id)
 
     def request_attachment(self, device_id: str, attachment: Attachment) -> None:
         import tempfile

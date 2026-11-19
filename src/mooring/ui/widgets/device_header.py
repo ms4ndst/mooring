@@ -29,6 +29,8 @@ class DeviceHeader(QWidget):
         self.status.setWordWrap(True)
         self.ring = QPushButton("Ring phone")
         self.ring.clicked.connect(self._on_ring)
+        self.clipboard = QPushButton("Send clipboard")
+        self.clipboard.clicked.connect(self._on_clipboard)
 
         top = QHBoxLayout()
         top.setSpacing(8)
@@ -40,6 +42,7 @@ class DeviceHeader(QWidget):
         layout.addLayout(top)
         layout.addWidget(self.status)
         layout.addWidget(self.ring)
+        layout.addWidget(self.clipboard)
 
         backend.devicesChanged.connect(self.refresh)
         backend.deviceChanged.connect(self._on_device_changed)
@@ -54,6 +57,10 @@ class DeviceHeader(QWidget):
     def _on_ring(self) -> None:
         if device_id := self._settings.active_device:
             self._backend.ring(device_id)
+
+    def _on_clipboard(self) -> None:
+        if device_id := self._settings.active_device:
+            self._backend.send_clipboard(device_id)
 
     def refresh(self) -> None:
         device = self._backend.device(self._settings.active_device)
@@ -75,3 +82,10 @@ class DeviceHeader(QWidget):
         self.name.setText(name)
         self.status.setText(status)
         self.ring.setEnabled(usable)
+        clip_on = device is not None and device.clipboard_sync is not False
+        self.clipboard.setEnabled(usable and clip_on)
+        self.clipboard.setToolTip(
+            "Send this computer's clipboard to the phone"
+            if clip_on
+            else "Clipboard sync is turned off in Settings"
+        )

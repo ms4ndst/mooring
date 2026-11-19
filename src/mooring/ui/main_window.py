@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QCloseEvent
+from pathlib import Path
+
+from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtGui import QCloseEvent, QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QListWidget,
@@ -16,8 +18,10 @@ from mooring.backend.base import PhoneBackend
 from mooring.services.settings import SettingsStore
 from mooring.theme.catppuccin import Theme
 from mooring.ui.pages.common import PlaceholderPage
+from mooring.ui.pages.files import FilesPage
 from mooring.ui.pages.messages import MessagesPage
 from mooring.ui.pages.notifications import NotificationsPage
+from mooring.ui.pages.photos import PhotosPage
 from mooring.ui.pages.settings import SettingsPage
 from mooring.ui.widgets.device_header import DeviceHeader
 
@@ -35,22 +39,18 @@ class MainWindow(QMainWindow):
         self.resize(1100, 720)
         self.hide_on_close = False  # set by the app when a tray icon exists
         self._settings = settings
+        self._backend = backend
+        self.setAcceptDrops(True)
 
+        self.photos = PhotosPage(backend, settings, theme)
+        self.files = FilesPage(backend, settings)
         self.messages = MessagesPage(backend, settings, theme)
         self.notifications = NotificationsPage(backend, settings, theme)
         pages: list[tuple[str, str, QWidget]] = [
             ("Messages", "mail-message", self.messages),
-            (
-                "Photos",
-                "image-x-generic",
-                PlaceholderPage("Photos", "Recent photos arrive in Phase 4."),
-            ),
+            ("Photos", "image-x-generic", self.photos),
             ("Notifications", "preferences-desktop-notification", self.notifications),
-            (
-                "Files",
-                "folder",
-                PlaceholderPage("Files", "Browsing the phone's storage arrives in Phase 4."),
-            ),
+            ("Files", "folder", self.files),
             (
                 "Apps",
                 "applications-other",
@@ -89,6 +89,49 @@ class MainWindow(QMainWindow):
         if bar := self.statusBar():
             bar.setSizeGripEnabled(False)
         backend.error.connect(self.show_error)
+
+    # --- drop files to send them to the phone --------------------------------
+
+    def files_to_send(self, urls: list[QUrl]) -> list[QUrl]:
+        """Local files only, and never the phone's own files (e.g. dragged from Photos)."""
+        root = self._backend.storage_root(self._settings.active_device)
+        mount = str(Path(root).parents[2]) if root and len(Path(root).parents) > 2 else root
+        result = []
+        for url in urls:
+            if not url.isLocalFile():
+                continue
+            path = Path(url.toLocalFile())
+            if not path.is_file():
+                continue
+            if mount and str(path).startswith(mount):
+                continue
+            result.append(url)
+        return result
+
+    def dragEnterEvent(self, event: QDragEnterEvent | None) -> None:
+        mime = event.mimeData() if event else None
+        device = self._backend.device(self._settings.active_device)
+        usable = device is not None and device.reachable and device.trusted
+        if event and mime and mime.hasUrls() and usable and self.files_to_send(mime.urls()):
+            event.acceptProposedAction()
+        elif event:
+            event.ignore()
+
+    def dropEvent(self, event: QDropEvent | None) -> None:
+        mime = event.mimeData() if event else None
+        if event is None or mime is None:
+            return
+        urls = self.files_to_send(mime.urls())
+        device_id = self._settings.active_device
+        for url in urls:
+            self._backend.share_url(device_id, url.toString())
+        if urls:
+            event.acceptProposedAction()
+            self.show_message(f"Sending {len(urls)} file(s) to the phone…")
+
+    def show_message(self, message: str) -> None:
+        if bar := self.statusBar():
+            bar.showMessage(message, 6000)
 
     def show_error(self, message: str) -> None:
         if bar := self.statusBar():

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from PyQt6.QtCore import QModelIndex, QPersistentModelIndex, QRect, QRectF, QSize, Qt
-from PyQt6.QtGui import QFont, QFontMetrics, QImage, QPainter
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QPainterPath, QPen, QPixmap
 from PyQt6.QtWidgets import QListView, QStyle, QStyledItemDelegate, QStyleOptionViewItem
 
 from mooring.backend.base import Message
@@ -295,4 +295,51 @@ class NotificationDelegate(QStyledItemDelegate):
                 width,
             ),
         )
+        painter.restore()
+
+
+class PhotoDelegate(QStyledItemDelegate):
+    """Square, centre-cropped thumbnail tile; placeholder until the thumbnail exists."""
+
+    TILE = 160
+    GAP = 8
+
+    def __init__(self, theme: Theme, parent: QListView | None = None) -> None:
+        super().__init__(parent)
+        self._theme = theme
+
+    def sizeHint(self, option: QStyleOptionViewItem, index: _Index) -> QSize:
+        return QSize(self.TILE + self.GAP, self.TILE + self.GAP)
+
+    def paint(self, painter: QPainter | None, option: QStyleOptionViewItem, index: _Index) -> None:
+        if painter is None:
+            return
+        t = self._theme
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        r = option.rect
+        tile = QRectF(r.x() + self.GAP / 2, r.y() + self.GAP / 2, self.TILE, self.TILE)
+        clip = QPainterPath()
+        clip.addRoundedRect(tile, 10, 10)
+        painter.setClipPath(clip)
+
+        pix: QPixmap | None = index.data(Qt.ItemDataRole.DecorationRole)
+        if pix is not None and not pix.isNull():
+            side = min(pix.width(), pix.height())
+            src = QRectF((pix.width() - side) / 2, (pix.height() - side) / 2, side, side)
+            painter.drawPixmap(tile, pix, src)
+        else:
+            painter.fillRect(tile, t.color("surface0"))
+            painter.setPen(t.color("overlay0"))
+            painter.drawText(tile, Qt.AlignmentFlag.AlignCenter, "…")
+
+        painter.setClipping(False)
+        if option.state & QStyle.StateFlag.State_Selected:
+            pen = QPen(t.color("accent"), 3)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(tile.adjusted(1.5, 1.5, -1.5, -1.5), 10, 10)
+        elif option.state & QStyle.StateFlag.State_MouseOver:
+            painter.fillRect(tile, QColor(255, 255, 255, 18))
         painter.restore()

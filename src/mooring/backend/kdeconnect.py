@@ -83,6 +83,8 @@ class KdeConnectBackend(PhoneBackend):
         self._reload_timer.setInterval(150)  # coalesce bursts of daemon signals
         self._reload_timer.timeout.connect(self.reload_devices)
         self._sms = SmsChannel(self)
+        #: device -> local path of the phone's mounted internal storage
+        self._storage: dict[str, str] = {}
 
     # --- lifecycle -----------------------------------------------------------
 
@@ -193,6 +195,7 @@ class KdeConnectBackend(PhoneBackend):
                 for d in self._devices.values():
                     if d.reachable and d.trusted:
                         self._fetch_battery(d.id)
+                        self._fetch_clipboard_state(d.id)
                         self._sms.device_ready(d.id)
 
         for device_id in ids:
@@ -251,6 +254,8 @@ class KdeConnectBackend(PhoneBackend):
             reachable = bool(body[0])
             log.info("device %s %s", short(device.id), "reachable" if reachable else "unreachable")
             self._update(device.id, reachable=reachable)
+            if not reachable:
+                self._storage.pop(device.id, None)  # the sshfs mount dies with the link
             if reachable and device.trusted:
                 self._fetch_battery(device.id)
                 self._sms.device_ready(device.id)
@@ -264,6 +269,8 @@ class KdeConnectBackend(PhoneBackend):
                     self._sms.forget_device(device.id)
                 elif device.reachable:
                     self._sms.device_ready(device.id)
+        elif member == "pluginsChanged":
+            self._fetch_clipboard_state(device.id)
         elif member == "nameChanged":
             self._update(device.id, name=str(body[0]))
         elif member == "typeChanged":
@@ -432,6 +439,79 @@ class KdeConnectBackend(PhoneBackend):
 
     def request_attachment(self, device_id: str, attachment: Attachment) -> None:
         self._sms.request_attachment(device_id, attachment)
+
+    # --- storage -------------------------------------------------------------
+
+    def storage_root(self, device_id: str) -> str | None:
+        return self._storage.get(device_id)
+
+    def mount_storage(self, device_id: str) -> None:
+        if self._bus is None:
+            self.error.emit("Not connected to KDE Connect")
+            return
+        bus = self._bus
+        sftp = self._addr(device_id, P.SFTP_SUFFIX, P.SFTP_IFACE)
+
+        def failed(name: str, _text: str) -> None:
+            log.warning("sftp on %s failed: %s", short(device_id), name)
+            self.error.emit("Couldn't open the phone's storage")
+
+        def got_dirs(body: tuple[Any, ...]) -> None:
+            dirs: dict[str, Any] = body[0]
+            # {local path: (sig, label)}; prefer internal storage over SD cards
+            root = next(
+                (path for path, (_s, label) in dirs.items() if "internal" in str(label).lower()),
+                next(iter(dirs), None),
+            )
+            if root is None:
+                bus.call(sftp, "mountPoint", on_reply=lambda b: ready(str(b[0])), on_error=failed)
+            else:
+                ready(str(root))
+
+        def ready(root: str) -> None:
+            self._storage[device_id] = root
+            log.info("storage of %s mounted", short(device_id))
+            self.storageReady.emit(device_id, root)
+
+        def mounted(body: tuple[Any, ...]) -> None:
+            if body[0]:
+                bus.call(sftp, "getDirectories", on_reply=got_dirs, on_error=failed)
+                return
+
+            def reason(b: tuple[Any, ...]) -> None:
+                log.warning("sftp mount on %s failed", short(device_id))
+                detail = f": {b[0]}" if b and b[0] else ""
+                self.error.emit(f"Couldn't open the phone's storage{detail}")
+
+            bus.call(sftp, "getMountError", on_reply=reason, on_error=failed)
+
+        bus.call(sftp, "mountAndWait", on_reply=mounted, on_error=failed)
+
+    # --- clipboard -----------------------------------------------------------
+
+    def _fetch_clipboard_state(self, device_id: str) -> None:
+        if self._bus is None:
+            return
+        self._bus.call(
+            self._addr(device_id, None, P.DEVICE_IFACE),
+            "isPluginEnabled",
+            "s",
+            (P.CLIPBOARD_PLUGIN,),
+            on_reply=lambda b: self._update(device_id, clipboard_sync=bool(b[0])),
+            on_error=lambda _n, _t: None,
+        )
+
+    def set_clipboard_sync(self, device_id: str, enabled: bool) -> None:
+        if self._bus is None:
+            return
+        self._bus.call(
+            self._addr(device_id, None, P.DEVICE_IFACE),
+            "setPluginEnabled",
+            "sb",
+            (P.CLIPBOARD_PLUGIN, enabled),
+            on_reply=lambda _b: self._fetch_clipboard_state(device_id),
+            on_error=lambda name, _t: self.error.emit("Couldn't change clipboard sync"),
+        )
 
     # --- phone notifications (not yet) ---------------------------------------
 

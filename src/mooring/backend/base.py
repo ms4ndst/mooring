@@ -27,6 +27,8 @@ class Device:
     charging: bool = False
     #: Active transports, e.g. ("Wi-Fi", "Bluetooth"). Empty when unknown/offline.
     links: tuple[str, ...] = ()
+    #: KDE Connect's clipboard plugin on/off for this device (None = unknown).
+    clipboard_sync: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +101,8 @@ class PhoneBackend(QObject):
     notificationRemoved = pyqtSignal(str, str)
     #: A requested attachment was downloaded. Args: device id, local file path.
     attachmentReady = pyqtSignal(str, str)
+    #: Phone storage is mounted. Args: device id, local path of internal storage.
+    storageReady = pyqtSignal(str, str)
     #: Something failed that the user should hear about. Arg: short message.
     error = pyqtSignal(str)
 
@@ -167,4 +171,20 @@ class PhoneBackend(QObject):
 
     def request_attachment(self, device_id: str, attachment: Attachment) -> None:
         """Download the full file; answered by ``attachmentReady``."""
+        raise NotImplementedError
+
+    # --- storage -------------------------------------------------------------
+
+    def mount_storage(self, device_id: str) -> None:
+        """Mount the phone's storage locally; answered by ``storageReady`` or ``error``."""
+        raise NotImplementedError
+
+    def storage_root(self, device_id: str) -> str | None:
+        """Local path of the mounted internal storage, if mounted."""
+        raise NotImplementedError
+
+    # --- clipboard -----------------------------------------------------------
+
+    def set_clipboard_sync(self, device_id: str, enabled: bool) -> None:
+        """Turn KDE Connect's automatic clipboard sync for the device on/off."""
         raise NotImplementedError

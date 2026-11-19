@@ -56,10 +56,13 @@ NOTIFICATION_IFACE = "org.kde.kdeconnect.device.notifications.notification"
 #   dismiss(), reply(), sendReply(replyId, message), sendAction(action)
 SFTP_SUFFIX = "sftp"
 SFTP_IFACE = "org.kde.kdeconnect.device.sftp"
-#   mountAndWait(), mountPoint(), isMounted(), getDirectories(), unmount(), getMountError()
+#   (verified live) mountAndWait()->b, mount(), unmount(), isMounted()->b, mountPoint()->s,
+#   getMountError()->s, getDirectories()->a{sv} {local path: label}, startBrowsing()->b
+#   signals mounted(), unmounted(). Mounts via sshfs under /run/user/<uid>/<deviceId>.
 SHARE_SUFFIX = "share"
 SHARE_IFACE = "org.kde.kdeconnect.device.share"
 #   shareUrl(s), shareUrls(as), shareText(s), openFile(s)
+CLIPBOARD_PLUGIN = "kdeconnect_clipboard"  # for isPluginEnabled/setPluginEnabled
 CLIPBOARD_SUFFIX = "clipboard"
 CLIPBOARD_IFACE = "org.kde.kdeconnect.device.clipboard"
 #   sendClipboard(), isAutoShareDisabled

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from PyQt6.QtGui import QPixmapCache, QShowEvent
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -15,6 +16,7 @@ from PyQt6.QtWidgets import (
 )
 
 from mooring.backend.base import Device, PhoneBackend
+from mooring.services.paths import cache_size, clear_cache
 from mooring.services.settings import SettingsStore
 from mooring.theme.catppuccin import FLAVOR_LABELS
 from mooring.ui.pages.common import page_title
@@ -24,6 +26,14 @@ def _device_label(d: Device) -> str:
     if not d.trusted:
         return f"{d.name} (not paired)"
     return d.name if d.reachable else f"{d.name} (offline)"
+
+
+def human_size(n: int) -> str:
+    for unit in ("bytes", "KB", "MB"):
+        if n < 1024 or unit == "MB":
+            return f"{n} {unit}" if unit == "bytes" else f"{n:.1f} {unit}"
+        n /= 1024  # type: ignore[assignment]
+    return f"{n:.1f} GB"
 
 
 class SettingsPage(QWidget):
@@ -43,6 +53,12 @@ class SettingsPage(QWidget):
         self.show_text = QCheckBox("Show message text in notifications")
         self.show_text.setChecked(settings.notify_show_text)
         self.show_text.toggled.connect(settings.set_notify_show_text)
+        self.clipboard_sync = QCheckBox("Sync clipboard automatically (KDE Connect)")
+        self.clipboard_sync.toggled.connect(self._on_clipboard_toggled)
+        self.cache_label = QLabel()
+        self.cache_label.setObjectName("muted")
+        self.clear_cache_button = QPushButton("Clear cache")
+        self.clear_cache_button.clicked.connect(self._clear_cache)
         self.flavor_combo = QComboBox()
         for key, label in FLAVOR_LABELS.items():
             self.flavor_combo.addItem(label, key)
@@ -57,6 +73,11 @@ class SettingsPage(QWidget):
         form.addRow(QLabel("Active device"), self.device_combo)
         form.addRow(QLabel("Pairing"), pair_row)
         form.addRow(QLabel("Notifications"), self.show_text)
+        form.addRow(QLabel("Clipboard"), self.clipboard_sync)
+        cache_row = QHBoxLayout()
+        cache_row.addWidget(self.clear_cache_button)
+        cache_row.addWidget(self.cache_label, 1)
+        form.addRow(QLabel("Cache"), cache_row)
         form.addRow(QLabel("Theme"), self.flavor_combo)
 
         layout = QVBoxLayout(self)
@@ -85,6 +106,7 @@ class SettingsPage(QWidget):
         self.device_combo.setCurrentIndex(self.device_combo.findData(self._settings.active_device))
         self.device_combo.blockSignals(False)
         self._update_pair_button()
+        self._update_clipboard()
 
     def _update_pair_button(self) -> None:
         device = self._backend.device(self._settings.active_device)
@@ -102,6 +124,34 @@ class SettingsPage(QWidget):
             self.pair_hint.setText(
                 "Accept the request on the phone." if device.reachable else "Device is offline."
             )
+
+    def _update_clipboard(self) -> None:
+        device = self._backend.device(self._settings.active_device)
+        known = device is not None and device.trusted and device.clipboard_sync is not None
+        self.clipboard_sync.blockSignals(True)
+        self.clipboard_sync.setChecked(bool(device and device.clipboard_sync))
+        self.clipboard_sync.blockSignals(False)
+        self.clipboard_sync.setEnabled(known)
+
+    def _on_clipboard_toggled(self, enabled: bool) -> None:
+        if device_id := self._settings.active_device:
+            self._backend.set_clipboard_sync(device_id, enabled)
+
+    def showEvent(self, event: QShowEvent | None) -> None:
+        super().showEvent(event)
+        self._update_cache_label()
+
+    def _update_cache_label(self) -> None:
+        size = cache_size()
+        self.cache_label.setText(
+            f"{human_size(size)} of thumbnails in ~/.cache/mooring" if size else "Empty"
+        )
+        self.clear_cache_button.setEnabled(size > 0)
+
+    def _clear_cache(self) -> None:
+        clear_cache()
+        QPixmapCache.clear()
+        self._update_cache_label()
 
     def _on_device_picked(self, _index: int) -> None:
         device_id = self.device_combo.currentData()

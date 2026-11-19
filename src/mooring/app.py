@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 
-from PyQt6.QtCore import QObject, QRectF, Qt, pyqtSignal
+from PyQt6.QtCore import QObject, QRectF, Qt, QThreadPool, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
@@ -183,6 +183,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     notifier.start()
 
+    app.aboutToQuit.connect(_drain_thread_pool)
+
     backend.start()
     window.show()
     return app.exec()
+
+
+def _drain_thread_pool() -> None:
+    """Cancel queued background work and let running jobs finish before Qt tears down.
+
+    Done from Python (PyQt releases the GIL in waitForDone) so Pillow threads can
+    complete instead of deadlocking against a C++ destructor that holds the GIL.
+    """
+    pool = QThreadPool.globalInstance()
+    if pool is not None:
+        pool.clear()
+        pool.waitForDone(5000)
