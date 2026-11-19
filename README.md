@@ -18,7 +18,9 @@ and mirroring by `scrcpy`. See [PLAN.md](PLAN.md) for the architecture and phase
   drag out; drop files on the window to send them; clipboard push and sync toggle.
 - Phase 5 mirroring & apps: mirror the screen or open one phone app in its own window
   (scrcpy 3.0+, Niri opens each as a column); USB or Wi-Fi (wireless debugging) pairing.
-- Phone notifications page and calls (Phase 6): later.
+- Phase 6 calls: researched, not pursued. Call control works over Bluetooth HFP, but
+  call audio doesn't on the test laptop; see docs/phase6-calls.md. KDE Connect's own
+  desktop notifications cover incoming calls.
 
 Mirroring needs developer options on the phone: USB debugging (or Wireless debugging)
 and `sudo dnf install android-tools scrcpy`.
