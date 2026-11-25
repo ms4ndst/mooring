@@ -63,6 +63,10 @@ its battery use to "Unrestricted". For mirroring and phone apps, turn on USB (or
 Wireless) debugging in the phone's developer options. Settings → "Start Mooring when I
 log in" starts it in the tray.
 
+**Phone on another Wi-Fi?** Plug it in with USB debugging on. Mooring then runs KDE
+Connect through the cable (it shows "via USB cable"). Messages, notifications and the
+clipboard work that way. Photos and files still need the phone on the same Wi-Fi.
+
 **Two popups for every SMS?** Mooring posts its own popup for new messages (Open/Reply
 jump to the conversation), and KDE Connect also forwards the phone's SMS-app
 notification. To keep only Mooring's: in the KDE Connect app on the phone, open the

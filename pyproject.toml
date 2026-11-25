@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mooring"
-version = "0.1.1"
+version = "0.1.2"
 description = "A Phone Link-style hub for Linux, built on KDE Connect and scrcpy"
 readme = "README.md"
 requires-python = ">=3.12"

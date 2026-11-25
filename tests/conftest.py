@@ -55,3 +55,11 @@ def fake_tools(monkeypatch):
 
     monkeypatch.setattr(mirror.MirrorBackend, "__init__", init)
     return runner
+
+
+@pytest.fixture(autouse=True)
+def _no_real_cable_probe(monkeypatch):
+    """Tests must not depend on whether this machine has a phone tunnelled over USB."""
+    import mooring.services.usb_link as usb_link
+
+    monkeypatch.setattr(usb_link, "cable_link_active", lambda tables=None: False)

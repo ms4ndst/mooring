@@ -36,6 +36,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.1.2" date="2026-11-25">
+      <description>
+        <p>With the phone plugged in over USB, messages, notifications and the clipboard keep working when the phone is on another network.</p>
+      </description>
+    </release>
     <release version="0.1.1" date="2026-11-19">
       <description>
         <p>Photos and Files recover from a broken connection to the phone's storage, and report errors instead of showing no photos.</p>

@@ -10,6 +10,7 @@ backend already holds (``devices()``, ``conversations()``) are synchronous.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -115,6 +116,10 @@ class PhoneBackend(QObject):
     def start(self) -> None:
         """Connect to the daemon and emit ``devicesChanged`` once devices are known."""
         raise NotImplementedError
+
+    def self_identity(self, done: Callable[[str, str], None]) -> None:
+        """This computer's KDE Connect id and name; ``done("", "")`` if unknown."""
+        done("", "")
 
     # --- devices -------------------------------------------------------------
 

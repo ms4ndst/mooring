@@ -1,5 +1,5 @@
 Name:           mooring
-Version:        0.1.1
+Version:        0.1.2
 Release:        1%{?dist}
 Summary:        Your Android phone on the Linux desktop
 
@@ -63,6 +63,11 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/io.github.ms4ndst.Moo
 %{_datadir}/icons/hicolor/scalable/apps/io.github.ms4ndst.Mooring.svg
 
 %changelog
+* Wed Nov 25 2026 ms4ndst - 0.1.2-1
+- Run KDE Connect through the USB cable (adb) when the phone is on another
+  network; the phone shows as connected "via USB cable"
+- Photos/Files explain that they need a shared Wi-Fi while on the cable link
+
 * Thu Nov 19 2026 ms4ndst - 0.1.1-1
 - Repair a dead sshfs mount of the phone's storage (left behind after a network
   change or kdeconnectd restart) and retry, instead of failing to mount

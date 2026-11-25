@@ -14,9 +14,11 @@ from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from mooring import __version__
 from mooring.backend.base import PhoneBackend
+from mooring.backend.mirror import Runner
 from mooring.resources.icons import APP_ID, app_icon
 from mooring.services.notifier import Notifier
 from mooring.services.settings import SettingsStore
+from mooring.services.usb_link import UsbLink
 from mooring.theme.catppuccin import FLAVORS, Theme
 from mooring.ui.main_window import MainWindow
 
@@ -180,6 +182,9 @@ def main(argv: list[str] | None = None) -> int:
         parent=window,
     )
     notifier.start()
+    # KDE Connect over the USB cable when the phone is on another network.
+    usb = UsbLink(backend, Runner(), parent=window)
+    usb.start()
 
     app.aboutToQuit.connect(_drain_thread_pool)
 

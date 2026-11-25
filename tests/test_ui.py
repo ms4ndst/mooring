@@ -260,16 +260,32 @@ def test_clipboard_button_and_sync_toggle(qtbot, backend, settings, theme):
     assert not window.device_header.clipboard.isEnabled()
 
 
-def test_dropping_window_during_thumbnail_generation_does_not_hang(qtbot, backend, settings, theme):
+def test_dropping_window_during_thumbnail_generation_does_not_hang(
+    qtbot, backend, settings, theme, monkeypatch
+):
     """Regression: a per-object QThreadPool, destroyed by Python's GC (GIL held) while
     Pillow threads still needed the GIL, deadlocked. qtbot only holds a weak ref."""
     import gc
+    import time
 
-    from PyQt6.QtCore import QThreadPool
+    from PyQt6.QtCore import Qt, QThreadPool
 
-    page = open_photos(qtbot, make_window(qtbot, backend, settings, theme))
+    import mooring.services.thumbnails as thumbnails
+
+    real = thumbnails.make_thumbnail
+
+    def slow(*args, **kwargs):  # keep work in flight however fast the machine is
+        time.sleep(0.3)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(thumbnails, "make_thumbnail", slow)
+    window = make_window(qtbot, backend, settings, theme)  # held until we drop it
+    page = open_photos(qtbot, window)
+    model = page.model
+    for row in range(model.rowCount()):  # what painting does; offscreen may not paint yet
+        model.data(model.index(row, 0), Qt.ItemDataRole.DecorationRole)
     assert not page.thumbs.idle()  # thumbnails still being made
-    del page
+    del model, page, window
     gc.collect()  # frees the window (and its children) with the GIL held
     assert QThreadPool.globalInstance().waitForDone(10000)
 

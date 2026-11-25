@@ -22,24 +22,33 @@ from mooring.backend.base import Attachment, Conversation, Device, Notification,
 from mooring.backend.kdeconnect_notifications import NotificationChannel
 from mooring.backend.kdeconnect_sms import SmsChannel
 from mooring.backend.qjeepney import BusClient, DBusClient
+from mooring.services import usb_link
 from mooring.services.sshfs import clear_stale_mount
 
 log = logging.getLogger(__name__)
 
 DAEMON = DBusAddress(P.DAEMON_PATH, P.SERVICE, P.DAEMON_IFACE)
 
+CABLE_STORAGE = (
+    "The phone is connected over the USB cable. Photos and files need it on the same "
+    "Wi-Fi as this computer."
+)
+
 
 def short(device_id: str) -> str:
     return device_id[:6]
 
 
-def link_names(providers: Any) -> tuple[str, ...]:
-    """kdeconnectd provider names ('LAN', 'Bluetooth (beta)') -> UI names, Wi-Fi first."""
+def link_names(providers: Any, cable: bool = False) -> tuple[str, ...]:
+    """kdeconnectd provider names ('LAN', 'Bluetooth (beta)') -> UI names, Wi-Fi first.
+
+    ``cable``: the LAN link runs through adb (see services/usb_link.py).
+    """
     names: list[str] = []
     for provider in providers or ():
         low = str(provider).lower()
         name = (
-            "Wi-Fi"
+            ("USB cable" if cable else "Wi-Fi")
             if low.startswith("lan")
             else "Bluetooth"
             if "bluetooth" in low
@@ -47,7 +56,7 @@ def link_names(providers: Any) -> tuple[str, ...]:
         )
         if name not in names:
             names.append(name)
-    order = {"Wi-Fi": 0, "Bluetooth": 1}
+    order = {"Wi-Fi": 0, "USB cable": 0, "Bluetooth": 1}
     return tuple(sorted(names, key=lambda n: order.get(n, 2)))
 
 
@@ -90,6 +99,8 @@ class KdeConnectBackend(PhoneBackend):
         self._storage: dict[str, str] = {}
         #: Removes a dead sshfs mount at a path; replaced in tests.
         self.clear_stale_mount: Callable[[str], bool] = clear_stale_mount
+        #: True while the LAN link runs through the USB cable (injectable for tests).
+        self.cable_link_active: Callable[[], bool] = usb_link.cable_link_active
 
     # --- lifecycle -----------------------------------------------------------
 
@@ -179,6 +190,22 @@ class KdeConnectBackend(PhoneBackend):
 
         return checked
 
+    def self_identity(self, done: Callable[[str, str], None]) -> None:
+        if self._bus is None:
+            done("", "")
+            return
+        bus = self._bus
+
+        def got_id(b: tuple[Any, ...]) -> None:
+            bus.call(
+                DAEMON,
+                "announcedName",
+                on_reply=lambda n: done(str(b[0]), str(n[0])),
+                on_error=lambda _n, _t: done("", ""),
+            )
+
+        bus.call(DAEMON, "selfId", on_reply=got_id, on_error=lambda _n, _t: done("", ""))
+
     # --- device list ---------------------------------------------------------
 
     def devices(self) -> list[Device]:
@@ -237,7 +264,7 @@ class KdeConnectBackend(PhoneBackend):
                 type=str(props.get("type", "phone")),
                 reachable=bool(props.get("isReachable", False)),
                 trusted=bool(props.get("isPaired", False)),
-                links=link_names(props.get("activeProviderNames")),
+                links=link_names(props.get("activeProviderNames"), self.cable_link_active()),
                 battery=old.battery if old else None,
                 charging=old.charging if old else False,
             )
@@ -370,7 +397,10 @@ class KdeConnectBackend(PhoneBackend):
             return
 
         def got(props: dict[str, Any]) -> None:
-            self._update(device_id, links=link_names(props.get("activeProviderNames")))
+            self._update(
+                device_id,
+                links=link_names(props.get("activeProviderNames"), self.cable_link_active()),
+            )
 
         self._bus.get_all(self._addr(device_id, None, P.DEVICE_IFACE), got, lambda _n, _t: None)
 
@@ -487,6 +517,11 @@ class KdeConnectBackend(PhoneBackend):
     def mount_storage(self, device_id: str, _retry: bool = True) -> None:
         if self._bus is None:
             self.error.emit("Not connected to KDE Connect")
+            return
+        device = self._devices.get(device_id)
+        if device is not None and "USB cable" in device.links:
+            # sshfs would dial the phone's Wi-Fi address, which isn't reachable from here.
+            self.storageFailed.emit(device_id, CABLE_STORAGE)
             return
         bus = self._bus
         sftp = self._addr(device_id, P.SFTP_SUFFIX, P.SFTP_IFACE)

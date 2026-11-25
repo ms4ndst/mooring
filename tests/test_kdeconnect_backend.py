@@ -304,3 +304,24 @@ def test_clipboard_sync_state_and_toggle(backend, bus):
     backend.set_clipboard_sync(PHONE, False)
     assert backend.device(PHONE).clipboard_sync is False
     assert bus.called("setPluginEnabled")[0][4] == "sb"
+
+
+def test_cable_link_is_named_and_storage_explains_the_limit(qtbot, bus):
+    bus.props[(P.device_path(PHONE), P.DEVICE_IFACE)]["activeProviderNames"] = ["LAN"]
+    b = KdeConnectBackend(client_factory=lambda: bus)
+    b.cable_link_active = lambda: True
+    b.start()
+    assert b.device(PHONE).links == ("USB cable",)
+    with qtbot.waitSignal(b.storageFailed) as failed:
+        b.mount_storage(PHONE)
+    assert "USB cable" in failed.args[1]
+    assert not bus.called("mountAndWait")  # sshfs would dial an unreachable Wi-Fi address
+
+
+def test_self_identity(qtbot, backend, bus):
+    bus.methods[(P.DAEMON_PATH, P.DAEMON_IFACE, "selfId")] = lambda: ("c" * 32,)
+    bus.methods[(P.DAEMON_PATH, P.DAEMON_IFACE, "announcedName")] = lambda: ("Test Laptop",)
+    got = []
+    backend.self_identity(lambda i, n: got.append((i, n)))
+    qtbot.waitUntil(lambda: bool(got))
+    assert got == [("c" * 32, "Test Laptop")]
