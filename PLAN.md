@@ -51,6 +51,7 @@ itself (`backend/scrcpy_protocol.py`, `backend/scrcpy_client.py`).
 │   └─ FakeBackend (synthetic data: `mooring --fake`, tests)                │
 │  MirrorBackend ─ QProcess ─► adb / scrcpy (apps, pop-out, Wi-Fi pairing)  │
 │  MirrorSession ─ adb forward + sockets ─► scrcpy-server on the phone      │
+│  UsbLink ─ adb reverse + identity poke ─► KDE Connect over the USB cable  │
 │  Services: contacts (vCards), notifier (fdo D-Bus), photos + thumbnails   │
 │            (thread pool, ~/.cache/mooring 0700), settings, desktop        │
 └───────────────────────────────────────────────────────────────────────────┘
@@ -99,6 +100,8 @@ mooring/
 | 5 Mirroring & apps | scrcpy window, apps in own windows | Done, and extended: a **Mirror** page shows the phone inside Mooring (own scrcpy-protocol client, PyAV); **Pop out** and single apps use scrcpy windows. |
 | – Notifications page | (not in the plan) | Done: list, dismiss, reply to chat notifications. |
 | 7 Packaging | Desktop file, metainfo, RPM | Done: app ID, icons, start at login, RPM. Flatpak deferred (scrcpy/adb would need host access). |
+| – Releases | (not in the plan) | CI (GitHub Actions, Fedora 44 container) builds and attaches the RPMs for every `v*` tag. 0.1.1: repair a dead sshfs mount. 0.1.2: KDE Connect over the USB cable. |
+| – USB-cable link | (not in the plan) | Done (0.1.2): when a paired phone is out of reach but plugged in, `services/usb_link.py` runs `adb reverse tcp:1764 tcp:1716` and sends the phone kdeconnectd's identity packet over UDP to its own 127.0.0.1:1716; the phone connects back through the cable. Messages, notifications and clipboard work; the header shows "via USB cable". Photos/Files say they need a shared Wi-Fi. |
 
 ---
 
@@ -114,6 +117,14 @@ mooring/
   `backend/pyav.py` looks for PyAV there explicitly.
 - **Qt + threads + Pillow:** never let a per-object `QThreadPool` be destroyed by Python's
   GC while jobs run (GIL deadlock). Use the global pool and parentless signal objects.
+- **KDE Connect over adb:** only the main link tunnels. `sftp` (sshfs) and file transfers
+  dial the phone's Wi-Fi address, so they can't use the cable. The phone takes the laptop's
+  capabilities from the identity sent inside TLS, so the UDP poke can leave them empty.
+  A cable link shows up as an established loopback connection on port 1716
+  (`/proc/net/tcp6`, `::ffff:127.0.0.1`).
+- **"Nothing arrives" can be a phone-side plugin toggle.** The phone logs "no plugin can
+  handle it" for packets of a disabled plugin (seen: SMS switched off by mistake while
+  filtering duplicate popups, which belongs in Notification sync's app list).
 
 ## 6. Privacy rules (unchanged)
 
@@ -128,6 +139,7 @@ mooring/
 Everything above has been tested live against a real phone. Possible additions, only if
 they turn out to be missed in daily use:
 
+- Photos/Files over the USB cable (e.g. read them through adb when Wi-Fi isn't shared).
 - Mirror: phone audio, Ctrl+C/V passthrough, multi-touch.
 - Messages: sending pictures (MMS), new group conversations.
 - Notification action buttons; HEIC thumbnails; Flatpak.
