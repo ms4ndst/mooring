@@ -10,6 +10,7 @@ and may contain a person's name, so they're never logged.
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
@@ -101,6 +102,10 @@ class KdeConnectBackend(PhoneBackend):
         self.clear_stale_mount: Callable[[str], bool] = clear_stale_mount
         #: True while the LAN link runs through the USB cable (injectable for tests).
         self.cable_link_active: Callable[[], bool] = usb_link.cable_link_active
+        #: Set by UsbLink: forward the phone's sftp port over adb, then call back with
+        #: True if a new forward was added. None: storage can't work over the cable.
+        self.forward_storage: Callable[[str, Callable[[bool], None]], None] | None = None
+        self.path_exists: Callable[[str], bool] = os.path.isdir
 
     # --- lifecycle -----------------------------------------------------------
 
@@ -519,9 +524,9 @@ class KdeConnectBackend(PhoneBackend):
             self.error.emit("Not connected to KDE Connect")
             return
         device = self._devices.get(device_id)
-        if device is not None and "USB cable" in device.links:
-            # sshfs would dial the phone's Wi-Fi address, which isn't reachable from here.
-            self.storageFailed.emit(device_id, CABLE_STORAGE)
+        on_cable = device is not None and "USB cable" in device.links
+        if on_cable and self.forward_storage is None:
+            self.storageFailed.emit(device_id, CABLE_STORAGE)  # no adb to forward with
             return
         bus = self._bus
         sftp = self._addr(device_id, P.SFTP_SUFFIX, P.SFTP_IFACE)
@@ -543,7 +548,11 @@ class KdeConnectBackend(PhoneBackend):
             else:
                 ready(str(root))
 
-        def ready(root: str) -> None:
+        def ready(root: str, tries: int = 0) -> None:
+            # Over the cable the remount reports success a moment before the folder shows.
+            if on_cable and tries < 20 and not self.path_exists(root):
+                QTimer.singleShot(250, lambda: ready(root, tries + 1))
+                return
             self._storage[device_id] = root
             log.info("storage of %s mounted", short(device_id))
             self.storageReady.emit(device_id, root)
@@ -572,6 +581,28 @@ class KdeConnectBackend(PhoneBackend):
             self.error.emit(f"Couldn't open the phone's storage{detail}")
             self.storageFailed.emit(device_id, f"Couldn't open the phone's storage{detail}")
 
+        if on_cable and _retry and self.forward_storage is not None:
+            # Over the cable, sshfs dials 127.0.0.1:<the phone's sftp port>. The first
+            # request starts the phone's sftp server; then UsbLink forwards its port over
+            # adb and we mount again (the first attempt couldn't connect).
+            forward = self.forward_storage
+
+            def mount_again(_b: tuple[Any, ...] = ()) -> None:
+                bus.call(sftp, "mountAndWait", on_reply=mounted, on_error=failed)
+
+            def forwarded(changed: bool) -> None:
+                if changed:
+                    bus.call(sftp, "unmount", on_reply=mount_again, on_error=failed)
+                else:
+                    mount_again()
+
+            bus.call(
+                sftp,
+                "mountAndWait",
+                on_reply=lambda _b: forward(device_id, forwarded),
+                on_error=failed,
+            )
+            return
         bus.call(sftp, "mountAndWait", on_reply=mounted, on_error=failed)
 
     # --- clipboard -----------------------------------------------------------

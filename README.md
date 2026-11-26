@@ -64,8 +64,9 @@ Wireless) debugging in the phone's developer options. Settings → "Start Moorin
 log in" starts it in the tray.
 
 **Phone on another Wi-Fi?** Plug it in with USB debugging on. Mooring then runs KDE
-Connect through the cable (it shows "via USB cable"). Messages, notifications and the
-clipboard work that way. Photos and files still need the phone on the same Wi-Fi.
+Connect through the cable (it shows "via USB cable"). Messages, notifications, the
+clipboard, photos and the phone's files all work that way. Sending files to the phone
+still needs the same Wi-Fi.
 
 **Two popups for every SMS?** Mooring posts its own popup for new messages (Open/Reply
 jump to the conversation), and KDE Connect also forwards the phone's SMS-app

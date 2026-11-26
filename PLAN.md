@@ -101,7 +101,7 @@ mooring/
 | – Notifications page | (not in the plan) | Done: list, dismiss, reply to chat notifications. |
 | 7 Packaging | Desktop file, metainfo, RPM | Done: app ID, icons, start at login, RPM. Flatpak deferred (scrcpy/adb would need host access). |
 | – Releases | (not in the plan) | CI (GitHub Actions, Fedora 44 container) builds and attaches the RPMs for every `v*` tag. 0.1.1: repair a dead sshfs mount. 0.1.2: KDE Connect over the USB cable. |
-| – USB-cable link | (not in the plan) | Done (0.1.2): when a paired phone is out of reach but plugged in, `services/usb_link.py` runs `adb reverse tcp:1764 tcp:1716` and sends the phone kdeconnectd's identity packet over UDP to its own 127.0.0.1:1716; the phone connects back through the cable. Messages, notifications and clipboard work; the header shows "via USB cable". Photos/Files say they need a shared Wi-Fi. |
+| – USB-cable link | (not in the plan) | Done (0.1.2): when a paired phone is out of reach but plugged in, `services/usb_link.py` runs `adb reverse tcp:1764 tcp:1716` and sends the phone kdeconnectd's identity packet over UDP to its own 127.0.0.1:1716; the phone connects back through the cable. Messages, notifications and clipboard work; the header shows "via USB cable". Photos and Files too (next): Mooring forwards the phone's sftp port with `adb forward`. |
 
 ---
 
@@ -117,8 +117,12 @@ mooring/
   `backend/pyav.py` looks for PyAV there explicitly.
 - **Qt + threads + Pillow:** never let a per-object `QThreadPool` be destroyed by Python's
   GC while jobs run (GIL deadlock). Use the global pool and parentless signal objects.
-- **KDE Connect over adb:** only the main link tunnels. `sftp` (sshfs) and file transfers
-  dial the phone's Wi-Fi address, so they can't use the cable. The phone takes the laptop's
+- **KDE Connect over adb:** kdeconnectd runs sshfs against the link's peer address, which
+  over the cable is 127.0.0.1. The first mount request starts the phone's sftp server
+  (port 1739-1763, found in the phone's `/proc/net/tcp*` by KDE Connect's uid); after
+  `adb forward tcp:P tcp:P` the next mount works. The folder appears a moment after the
+  mount reports success. Forwards are removed when the cable link ends and at start-up.
+  File transfers (share) still dial the phone's Wi-Fi address. The phone takes the laptop's
   capabilities from the identity sent inside TLS, so the UDP poke can leave them empty.
   A cable link shows up as an established loopback connection on port 1716
   (`/proc/net/tcp6`, `::ffff:127.0.0.1`).
@@ -139,7 +143,7 @@ mooring/
 Everything above has been tested live against a real phone. Possible additions, only if
 they turn out to be missed in daily use:
 
-- Photos/Files over the USB cable (e.g. read them through adb when Wi-Fi isn't shared).
+- Sending files to the phone over the USB cable (share uses the phone's Wi-Fi address).
 - Mirror: phone audio, Ctrl+C/V passthrough, multi-touch.
 - Messages: sending pictures (MMS), new group conversations.
 - Notification action buttons; HEIC thumbnails; Flatpak.

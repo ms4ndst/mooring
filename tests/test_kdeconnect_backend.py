@@ -315,7 +315,50 @@ def test_cable_link_is_named_and_storage_explains_the_limit(qtbot, bus):
     with qtbot.waitSignal(b.storageFailed) as failed:
         b.mount_storage(PHONE)
     assert "USB cable" in failed.args[1]
-    assert not bus.called("mountAndWait")  # sshfs would dial an unreachable Wi-Fi address
+    assert not bus.called("mountAndWait")  # no adb (forward_storage unset): can't work
+
+
+def cable_backend(bus):
+    bus.props[(P.device_path(PHONE), P.DEVICE_IFACE)]["activeProviderNames"] = ["LAN"]
+    b = KdeConnectBackend(client_factory=lambda: bus)
+    b.cable_link_active = lambda: True
+    b.path_exists = lambda path: True
+    b.start()
+    return b
+
+
+def test_storage_over_cable_forwards_then_remounts(qtbot, bus):
+    b = cable_backend(bus)
+    events = []
+    bus.methods[(SFTP, P.SFTP_IFACE, "mountAndWait")] = lambda: (events.append("mount"), (True,))[1]
+    bus.methods[(SFTP, P.SFTP_IFACE, "unmount")] = lambda: (events.append("unmount"), ())[1]
+    bus.methods[(SFTP, P.SFTP_IFACE, "getDirectories")] = lambda: (
+        {ROOT: ("s", "Internal shared storage")},
+    )
+
+    def forward(device_id, done):
+        events.append("forward")
+        done(True)
+
+    b.forward_storage = forward
+    with qtbot.waitSignal(b.storageReady) as ready:
+        b.mount_storage(PHONE)
+    assert ready.args == [PHONE, ROOT]
+    # first mount starts the phone's sftp server; the forward makes the next one connect
+    assert events == ["mount", "forward", "unmount", "mount"]
+
+
+def test_storage_over_cable_with_existing_forward_mounts_again(qtbot, bus):
+    b = cable_backend(bus)
+    events = []
+    bus.methods[(SFTP, P.SFTP_IFACE, "mountAndWait")] = lambda: (events.append("mount"), (True,))[1]
+    bus.methods[(SFTP, P.SFTP_IFACE, "getDirectories")] = lambda: (
+        {ROOT: ("s", "Internal shared storage")},
+    )
+    b.forward_storage = lambda device_id, done: done(False)
+    with qtbot.waitSignal(b.storageReady):
+        b.mount_storage(PHONE)
+    assert events == ["mount", "mount"]
 
 
 def test_self_identity(qtbot, backend, bus):
@@ -325,3 +368,17 @@ def test_self_identity(qtbot, backend, bus):
     backend.self_identity(lambda i, n: got.append((i, n)))
     qtbot.waitUntil(lambda: bool(got))
     assert got == [("c" * 32, "Test Laptop")]
+
+
+def test_storage_over_cable_waits_for_the_folder(qtbot, bus):
+    b = cable_backend(bus)
+    bus.methods[(SFTP, P.SFTP_IFACE, "mountAndWait")] = lambda: (True,)
+    bus.methods[(SFTP, P.SFTP_IFACE, "getDirectories")] = lambda: (
+        {ROOT: ("s", "Internal shared storage")},
+    )
+    b.forward_storage = lambda device_id, done: done(False)
+    checks = []
+    b.path_exists = lambda path: (checks.append(path), len(checks) >= 3)[1]
+    with qtbot.waitSignal(b.storageReady, timeout=3000):
+        b.mount_storage(PHONE)
+    assert len(checks) == 3

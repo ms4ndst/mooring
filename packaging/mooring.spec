@@ -1,5 +1,5 @@
 Name:           mooring
-Version:        0.1.2
+Version:        0.1.3
 Release:        1%{?dist}
 Summary:        Your Android phone on the Linux desktop
 
@@ -63,6 +63,11 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/io.github.ms4ndst.Moo
 %{_datadir}/icons/hicolor/scalable/apps/io.github.ms4ndst.Mooring.svg
 
 %changelog
+* Thu Nov 26 2026 ms4ndst - 0.1.3-1
+- Photos and Files work over the USB cable: the phone's sftp port is forwarded
+  with adb forward and the storage mounted again
+- Leftover storage forwards are removed at start-up and when the cable link ends
+
 * Wed Nov 25 2026 ms4ndst - 0.1.2-1
 - Run KDE Connect through the USB cable (adb) when the phone is on another
   network; the phone shows as connected "via USB cable"
